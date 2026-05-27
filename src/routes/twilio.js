@@ -59,7 +59,7 @@ router.post('/voice', async (req, res) => {
       const tts = await elevenlabsService.textToSpeech(greetingText, voiceId);
       audioUrl = tts.url;
     } catch (err) {
-      logger.warn('ElevenLabs failed, falling back to Twilio Say', { err: err.message });
+      logger.warn('OpenAI TTS failed, falling back to Twilio Say', { err: err.message });
     }
 
     if (audioUrl) twiml.play(audioUrl);
@@ -212,7 +212,7 @@ router.post('/transcribe', async (req, res) => {
 
     let audioUrl;
     try { const tts = await elevenlabsService.textToSpeech(aiResponse, voiceId); audioUrl = tts.url; } catch (err) {
-      logger.warn('ElevenLabs TTS failed', { err: err.message });
+      logger.warn('OpenAI TTS failed', { err: err.message });
     }
 
     if (audioUrl) twiml.play(audioUrl);

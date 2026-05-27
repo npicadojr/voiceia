@@ -1,75 +1,49 @@
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
-const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1';
+const OPENAI_VOICES = new Set(['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer']);
 
-async function fetchAudioStream(text, voiceId) {
-  const voice = voiceId || process.env.ELEVENLABS_VOICE_ID;
-  return axios.post(
-    `${ELEVENLABS_BASE}/text-to-speech/${voice}`,
-    {
-      text,
-      model_id: 'eleven_flash_v2_5',
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-    },
-    {
-      headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
-      },
-      responseType: 'stream',
-    }
-  );
+function resolveVoice(voiceId) {
+  if (voiceId && OPENAI_VOICES.has(voiceId)) return voiceId;
+  return process.env.OPENAI_TTS_VOICE || 'nova';
 }
 
-async function streamToBuffer(stream) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on('data', chunk => chunks.push(chunk));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-  });
+function getClient() {
+  const OpenAI = require('openai');
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
-/**
- * Convert text to speech.
- * - On Vercel (BLOB_READ_WRITE_TOKEN set): uploads to Vercel Blob, returns public URL.
- * - Locally: saves to /tmp/audio and serves via Express static.
- */
 async function textToSpeech(text, voiceId) {
   const fileId = uuidv4();
-  const response = await fetchAudioStream(text, voiceId);
+  const voice = resolveVoice(voiceId);
+
+  const openai = getClient();
+  const mp3 = await openai.audio.speech.create({
+    model: 'tts-1',
+    voice,
+    input: text,
+  });
+  const buffer = Buffer.from(await mp3.arrayBuffer());
 
   if (process.env.BLOB_READ_WRITE_TOKEN) {
-    // Vercel Blob path
     const { put } = require('@vercel/blob');
-    const buffer = await streamToBuffer(response.data);
     const { url } = await put(`audio/${fileId}.mp3`, buffer, {
       access: 'public',
       contentType: 'audio/mpeg',
     });
-    logger.info('ElevenLabs TTS → Vercel Blob', { fileId });
+    logger.info('OpenAI TTS → Vercel Blob', { fileId, voice });
     return { fileId, url };
   }
 
-  // Local path — save to /tmp/audio, served as static
   const dir = '/tmp/audio';
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${fileId}.mp3`);
-
-  await new Promise((resolve, reject) => {
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
+  fs.writeFileSync(filePath, buffer);
 
   const url = `${process.env.BASE_URL}/audio/${fileId}.mp3`;
-  logger.info('ElevenLabs TTS → /tmp/audio', { fileId });
+  logger.info('OpenAI TTS → /tmp/audio', { fileId, voice });
   return { fileId, filePath, url };
 }
 
