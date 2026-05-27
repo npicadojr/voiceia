@@ -66,7 +66,7 @@ router.post('/voice', async (req, res) => {
     else twiml.say({ language: 'es-MX' }, greetingText);
 
     twiml.record({
-      action: `${process.env.BASE_URL}/twilio/transcribe`,
+      action: `https://${req.headers.host}/twilio/transcribe`,
       method: 'POST',
       maxLength: 30,
       timeout: 5,
@@ -95,7 +95,7 @@ router.post('/transcribe', async (req, res) => {
 
   if (recordingStatus === 'no-audio' || !recordingUrl) {
     twiml.say({ language: 'es-MX' }, 'No escuché nada. ¿Podría repetir?');
-    twiml.record({ action: `${process.env.BASE_URL}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
     return res.type('text/xml').send(twiml.toString());
   }
 
@@ -119,7 +119,7 @@ router.post('/transcribe', async (req, res) => {
       await conversationManager.endConversation(callSid);
 
       twiml.say({ language: 'es-MX' }, 'Por supuesto, le transfiero con un agente humano. Un momento por favor.');
-      const dial = twiml.dial({ action: `${process.env.BASE_URL}/twilio/transfer-complete`, method: 'POST' });
+      const dial = twiml.dial({ action: `https://${req.headers.host}/twilio/transfer-complete`, method: 'POST' });
       dial.number(tenant?.human_agent_number || process.env.HUMAN_AGENT_NUMBER || process.env.TWILIO_PHONE_NUMBER);
       return res.type('text/xml').send(twiml.toString());
     }
@@ -218,14 +218,14 @@ router.post('/transcribe', async (req, res) => {
     if (audioUrl) twiml.play(audioUrl);
     else twiml.say({ language: 'es-MX' }, aiResponse);
 
-    twiml.record({ action: `${process.env.BASE_URL}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');
     twiml.hangup();
 
   } catch (err) {
     logger.error('Error in /twilio/transcribe', { callSid, err: err.message });
     twiml.say({ language: 'es-MX' }, 'Lo siento, ocurrió un error procesando su respuesta. Por favor intente de nuevo.');
-    twiml.record({ action: `${process.env.BASE_URL}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5 });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5 });
   }
 
   res.type('text/xml').send(twiml.toString());
