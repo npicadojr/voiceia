@@ -99,10 +99,10 @@ router.post('/transcribe', async (req, res) => {
     return res.type('text/xml').send(twiml.toString());
   }
 
-  const agentType = await conversationManager.getAgentType(callSid);
-  const agent = AGENTS[agentType] || AGENTS.leadQualifier;
-
   try {
+    const agentType = await conversationManager.getAgentType(callSid);
+    const agent = AGENTS[agentType] || AGENTS.leadQualifier;
+
     // Resolve tenant for voice/prompt overrides
     const callRecord = await callModel.getCallBySid(callSid);
     const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
@@ -186,7 +186,6 @@ router.post('/transcribe', async (req, res) => {
             }
           }
           updatedMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) });
-          await conversationManager.addMessage(callSid, 'tool', JSON.stringify(toolResult));
         }
         // Re-call GPT-4o without tools to get the natural language response
         const final = await openaiService.chat(
@@ -203,18 +202,20 @@ router.post('/transcribe', async (req, res) => {
     }
 
     logger.info('AI response', { callSid, text: aiResponse, host: req.headers.host });
-    await conversationManager.addMessage(callSid, 'assistant', aiResponse);
 
     twiml.say({ language: 'es-MX' }, aiResponse);
-
     twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');
     twiml.hangup();
 
+    await conversationManager.addMessage(callSid, 'assistant', aiResponse).catch(err =>
+      logger.warn('Failed to store AI response', { callSid, err: err.message })
+    );
+
   } catch (err) {
     logger.error('Error in /twilio/transcribe', { callSid, err: err.message });
     twiml.say({ language: 'es-MX' }, 'Lo siento, ocurrió un error procesando su respuesta. Por favor intente de nuevo.');
-    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5 });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
   }
 
   res.type('text/xml').send(twiml.toString());

@@ -43,7 +43,8 @@ async function getCallById(id) {
 }
 
 async function getCallBySid(callSid) {
-  const { data } = await supabase.from('calls').select('*').eq('call_sid', callSid).single();
+  const { data, error } = await supabase.from('calls').select('*').eq('call_sid', callSid).single();
+  if (error && error.code !== 'PGRST116') throw error;
   return data ? { ...data, callId: data.id } : null;
 }
 
