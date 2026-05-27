@@ -10,11 +10,11 @@ router.use(adminAuth);
 
 // POST /admin/tenants
 router.post('/tenants', async (req, res) => {
-  const { name, slug, phoneNumber, voiceId, humanAgentNumber } = req.body;
+  const { name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId } = req.body;
   if (!name || !slug) return res.status(400).json({ error: '`name` and `slug` are required' });
 
   try {
-    const tenant = await tenantModel.createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber });
+    const tenant = await tenantModel.createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId });
     res.status(201).json(tenant);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'slug already exists' });
@@ -46,7 +46,7 @@ router.get('/tenants/:id', async (req, res) => {
 
 // PUT /admin/tenants/:id
 router.put('/tenants/:id', async (req, res) => {
-  const allowed = ['name', 'phone_number', 'elevenlabs_voice_id', 'human_agent_number', 'active'];
+  const allowed = ['name', 'phone_number', 'elevenlabs_voice_id', 'human_agent_number', 'active', 'default_agent', 'google_refresh_token', 'google_calendar_id'];
   const fields = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
 
   try {

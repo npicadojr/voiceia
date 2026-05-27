@@ -93,4 +93,33 @@ async function extractStructuredData(messages, schema) {
   return args ? JSON.parse(args) : {};
 }
 
-module.exports = { transcribeAudio, chat, extractStructuredData };
+/**
+ * Chat with GPT-4o with tool support. Returns either a text response or tool calls.
+ * @returns {Promise<{content:string}|{toolCalls:Array}>}
+ */
+async function chatWithTools(messages, systemPrompt, tools) {
+  const full = [{ role: 'system', content: systemPrompt }, ...messages];
+
+  const completion = await getClient().chat.completions.create({
+    model: 'gpt-4o',
+    messages: full,
+    tools,
+    temperature: 0.7,
+    max_tokens: 400,
+  });
+
+  const choice = completion.choices[0];
+
+  if (choice.finish_reason === 'tool_calls') {
+    const toolCalls = choice.message.tool_calls.map(tc => ({
+      id: tc.id,
+      name: tc.function.name,
+      args: JSON.parse(tc.function.arguments),
+    }));
+    return { toolCalls, assistantMessage: choice.message };
+  }
+
+  return { content: choice.message.content };
+}
+
+module.exports = { transcribeAudio, chat, chatWithTools, extractStructuredData };

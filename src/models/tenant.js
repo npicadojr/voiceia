@@ -1,7 +1,7 @@
 const supabase = require('../supabase');
 const { generateApiKey } = require('../utils/apiKey');
 
-async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber }) {
+async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId }) {
   const apiKey = generateApiKey();
   const { data, error } = await supabase
     .from('tenants')
@@ -11,6 +11,9 @@ async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber
       phone_number: phoneNumber,
       elevenlabs_voice_id: voiceId || process.env.ELEVENLABS_VOICE_ID,
       human_agent_number: humanAgentNumber,
+      default_agent: defaultAgent || 'leadQualifier',
+      google_refresh_token: googleRefreshToken || null,
+      google_calendar_id: googleCalendarId || 'primary',
       api_key: apiKey,
     })
     .select()

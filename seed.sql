@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS tenants (
   elevenlabs_voice_id  VARCHAR(80),
   human_agent_number   VARCHAR(20),
   api_key              VARCHAR(80)  UNIQUE NOT NULL,
+  default_agent        VARCHAR(30)  DEFAULT 'leadQualifier',
+  google_refresh_token TEXT,
+  google_calendar_id   VARCHAR(120) DEFAULT 'primary',
   active               BOOLEAN DEFAULT TRUE,
   created_at           TIMESTAMPTZ DEFAULT NOW()
 );

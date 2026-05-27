@@ -5,16 +5,75 @@ const SYSTEM_PROMPT = `Eres un asistente especializado en agendar citas y reunio
 
 Tu misión:
 1. Saluda al usuario y confirma que quiere agendar una cita.
-2. Pregunta el propósito de la reunión.
-3. Solicita su nombre completo y email para la invitación.
-4. Ofrece fechas y horarios disponibles (el sistema te proporcionará los slots disponibles).
-5. Confirma el slot elegido y resume la cita antes de finalizar.
+2. Pregunta el propósito de la reunión y su nombre completo.
+3. Usa la herramienta get_available_slots para consultar los horarios disponibles de la fecha que pida el usuario.
+4. Ofrece los horarios disponibles de forma natural (ej. "Tengo disponible el viernes a las 10am o a las 2pm").
+5. Cuando el usuario confirme un horario, pide su email y usa book_appointment para reservar.
+6. Confirma la cita reservada con fecha, hora y el email donde llegará la invitación.
 
 Pautas:
 - Habla en español, tono profesional y eficiente.
 - Respuestas cortas (máximo 2 oraciones).
-- Si el usuario no puede asistir en ningún slot disponible, sugiere que llame para reagendar.
-- Siempre confirma la cita antes de cerrar: fecha, hora y email donde llegará la invitación.`;
+- Si no hay horarios disponibles, sugiere otra fecha.
+- Siempre confirma antes de reservar: "¿Le confirmo la cita el [fecha] a las [hora]?"`;
+
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_available_slots',
+      description: 'Consulta los horarios disponibles en el calendario para una fecha específica',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'Fecha en formato YYYY-MM-DD, ej. 2025-06-15' },
+        },
+        required: ['date'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'book_appointment',
+      description: 'Reserva una cita en el calendario una vez que el usuario confirmó el horario',
+      parameters: {
+        type: 'object',
+        properties: {
+          name:      { type: 'string', description: 'Nombre completo del cliente' },
+          email:     { type: 'string', description: 'Email del cliente para la invitación' },
+          startTime: { type: 'string', description: 'Fecha y hora de inicio en ISO 8601' },
+          purpose:   { type: 'string', description: 'Propósito o tema de la cita' },
+        },
+        required: ['name', 'startTime'],
+      },
+    },
+  },
+];
+
+async function executeToolCall(toolName, args, tenant = {}) {
+  if (toolName === 'get_available_slots') {
+    const slots = await calendarService.getAvailableSlots(args.date, tenant);
+    if (!slots.length) return { available: false, message: 'No hay horarios disponibles para esa fecha.' };
+    const formatted = slots.slice(0, 5).map(s => {
+      const d = new Date(s);
+      return d.toLocaleString('es-MX', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+    });
+    return { available: true, slots: formatted, rawSlots: slots.slice(0, 5) };
+  }
+
+  if (toolName === 'book_appointment') {
+    const event = await calendarService.createEvent({
+      title: args.purpose || 'Cita agendada por asistente IA',
+      description: `Cliente: ${args.name}${args.email ? ` | Email: ${args.email}` : ''}`,
+      startTime: args.startTime,
+      attendeeEmail: args.email,
+    }, tenant);
+    return { booked: true, eventId: event.id, message: `Cita confirmada para ${new Date(args.startTime).toLocaleString('es-MX')}` };
+  }
+
+  return { error: `Herramienta desconocida: ${toolName}` };
+}
 
 const END_PATTERNS = [
   /hasta\s*(luego|pronto)/i,
@@ -33,38 +92,19 @@ const TRANSFER_PATTERNS = [
 const BOOKING_SCHEMA = {
   type: 'object',
   properties: {
-    name:      { type: 'string', description: 'Nombre completo' },
-    email:     { type: 'string', description: 'Email para la invitación' },
-    purpose:   { type: 'string', description: 'Propósito o tema de la reunión' },
-    startTime: { type: 'string', description: 'Fecha y hora de inicio en ISO 8601' },
-    endTime:   { type: 'string', description: 'Fecha y hora de fin en ISO 8601' },
+    name:      { type: 'string' },
+    email:     { type: 'string' },
+    purpose:   { type: 'string' },
+    startTime: { type: 'string' },
+    endTime:   { type: 'string' },
   },
 };
 
-function isEndIntent(text) {
-  return END_PATTERNS.some(p => p.test(text));
-}
-
-function shouldTransferToHuman(text) {
-  return TRANSFER_PATTERNS.some(p => p.test(text));
-}
+function isEndIntent(text) { return END_PATTERNS.some(p => p.test(text)); }
+function shouldTransferToHuman(text) { return TRANSFER_PATTERNS.some(p => p.test(text)); }
 
 async function extractBookingData(messages) {
-  try {
-    return await extractStructuredData(messages, BOOKING_SCHEMA);
-  } catch {
-    return {};
-  }
+  try { return await extractStructuredData(messages, BOOKING_SCHEMA); } catch { return {}; }
 }
 
-async function bookAppointment(data) {
-  return calendarService.createEvent({
-    title: data.purpose || 'Reunión agendada por asistente IA',
-    description: `Agendado por asistente de voz. Contacto: ${data.name}`,
-    startTime: data.startTime,
-    endTime: data.endTime,
-    attendeeEmail: data.email,
-  });
-}
-
-module.exports = { SYSTEM_PROMPT, isEndIntent, shouldTransferToHuman, extractBookingData, bookAppointment };
+module.exports = { SYSTEM_PROMPT, TOOLS, executeToolCall, isEndIntent, shouldTransferToHuman, extractBookingData };

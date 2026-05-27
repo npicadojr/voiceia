@@ -66,6 +66,16 @@
       <div class="field"><label>Número Twilio</label><input id="c-phone" placeholder="+15551234567" /></div>
       <div class="field"><label>ElevenLabs Voice ID</label><input id="c-voice" /></div>
       <div class="field"><label>Número agente humano</label><input id="c-human" /></div>
+      <div class="field"><label>Agente por defecto</label>
+        <select id="c-agent">
+          <option value="leadQualifier">Calificador de Leads</option>
+          <option value="appointmentBooker">Agendador de Citas</option>
+          <option value="surveyor">Encuestador</option>
+          <option value="support">Soporte Nivel 1</option>
+        </select>
+      </div>
+      <div class="field"><label>Google Refresh Token</label><input id="c-gtoken" type="password" placeholder="Pegar refresh token OAuth" /></div>
+      <div class="field"><label>Google Calendar ID</label><input id="c-gcal" placeholder="primary  ó  email@gmail.com" /></div>
       <div style="display:flex;gap:.5rem;margin-top:.5rem">
         <button class="btn btn-primary" onclick="saveConfig()">Guardar</button>
         <button class="btn btn-danger" onclick="toggleActive()">Desactivar</button>
@@ -133,10 +143,14 @@
     document.getElementById('c-phone').value = tenantData.phone_number || '';
     document.getElementById('c-voice').value = tenantData.elevenlabs_voice_id || '';
     document.getElementById('c-human').value = tenantData.human_agent_number || '';
+    document.getElementById('c-agent').value = tenantData.default_agent || 'leadQualifier';
+    document.getElementById('c-gtoken').value = tenantData.google_refresh_token ? '••••••••' : '';
+    document.getElementById('c-gcal').value   = tenantData.google_calendar_id || 'primary';
     document.getElementById('tenantApiKey').textContent = tenantData.api_key;
 
     const baseUrl = window.location.origin;
-    document.getElementById('webhookUrl').textContent = `${baseUrl}/twilio/voice?tenant=${tenantData.slug}`;
+    const defaultAgent = tenantData.default_agent || 'leadQualifier';
+    document.getElementById('webhookUrl').textContent = `${baseUrl}/twilio/voice?tenant=${tenantData.slug}&agent=${defaultAgent}`;
 
     loadCalls();
     renderAgentForms();
@@ -175,12 +189,16 @@
   function renderAgentForms() {
     const configs = {};
     (tenantData.agent_configs || []).forEach(c => { configs[c.agent_type] = c; });
+    const activeAgent = tenantData.default_agent || 'leadQualifier';
 
     const html = Object.entries(AGENT_LABELS).map(([type, label]) => {
       const cfg = configs[type] || {};
+      const isActive = type === activeAgent;
       return `
-        <div class="card" style="margin-bottom:1rem">
-          <h3>${label}</h3>
+        <div class="card" style="margin-bottom:1rem;${isActive ? 'border-color:var(--accent)' : 'opacity:.6'}">
+          <h3 style="display:flex;align-items:center;gap:.5rem">${label}
+            ${isActive ? '<span class="badge badge-green">● Activo</span>' : '<span style="font-size:.7rem;color:var(--muted)">(no activo)</span>'}
+          </h3>
           <div class="field"><label>Saludo de bienvenida</label>
             <input id="ag-greeting-${type}" value="${esc(cfg.greeting_text || '')}" placeholder="Hola, soy..."/>
           </div>
@@ -195,12 +213,17 @@
   }
 
   async function saveConfig() {
+    const gtoken = document.getElementById('c-gtoken').value.trim();
     const fields = {
       name: document.getElementById('c-name').value.trim(),
       phone_number: document.getElementById('c-phone').value.trim() || null,
       elevenlabs_voice_id: document.getElementById('c-voice').value.trim() || null,
       human_agent_number: document.getElementById('c-human').value.trim() || null,
+      default_agent: document.getElementById('c-agent').value,
+      google_calendar_id: document.getElementById('c-gcal').value.trim() || 'primary',
     };
+    // Only update token if user typed a new one (not the masked placeholder)
+    if (gtoken && gtoken !== '••••••••') fields.google_refresh_token = gtoken;
     const res = await fetch(`/admin/tenants/${tenantId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': adminKey }, body: JSON.stringify(fields),
     });

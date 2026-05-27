@@ -36,11 +36,11 @@ router.post('/voice', async (req, res) => {
   const callSid    = req.body.CallSid;
   const fromNumber = req.body.From || req.body.Caller;
   const toNumber   = req.body.To   || req.body.Called;
-  const agentType  = req.query.agent || 'leadQualifier';
   const direction  = req.query.direction || (req.body.Direction === 'outbound-api' ? 'outbound' : 'inbound');
 
   try {
     const tenant = await resolveTenant(req.query.tenant);
+    const agentType  = req.query.agent || tenant?.default_agent || 'leadQualifier';
 
     // Load custom agent config if tenant exists
     let agentConfig = null;
@@ -152,7 +152,35 @@ router.post('/transcribe', async (req, res) => {
     }
 
     const history = await conversationManager.getHistory(callSid);
-    const { content: aiResponse } = await openaiService.chat(history, systemPrompt);
+
+    // Use tool calling for appointmentBooker, plain chat for others
+    let aiResponse;
+    if (agentType === 'appointmentBooker' && agent.TOOLS) {
+      const result = await openaiService.chatWithTools(history, systemPrompt, agent.TOOLS);
+
+      if (result.toolCalls) {
+        // Execute each tool call and build updated messages for re-call
+        const updatedMessages = [...history, result.assistantMessage];
+        for (const tc of result.toolCalls) {
+          logger.info('Tool call', { callSid, tool: tc.name, args: tc.args });
+          const toolResult = await agent.executeToolCall(tc.name, tc.args, tenant);
+          updatedMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) });
+          await conversationManager.addMessage(callSid, 'tool', JSON.stringify(toolResult));
+        }
+        // Re-call GPT-4o without tools to get the natural language response
+        const final = await openaiService.chat(
+          updatedMessages.filter(m => m.role !== 'system'),
+          systemPrompt
+        );
+        aiResponse = final.content;
+      } else {
+        aiResponse = result.content;
+      }
+    } else {
+      const result = await openaiService.chat(history, systemPrompt);
+      aiResponse = result.content;
+    }
+
     logger.info('AI response', { callSid, text: aiResponse });
     await conversationManager.addMessage(callSid, 'assistant', aiResponse);
 
