@@ -69,8 +69,8 @@ router.post('/voice', async (req, res) => {
       action: `https://${req.headers.host}/twilio/transcribe`,
       method: 'POST',
       maxLength: 30,
-      timeout: 5,
-      playBeep: false,
+      timeout: 2,
+      playBeep: true,
       trim: 'trim-silence',
     });
 
@@ -95,7 +95,7 @@ router.post('/transcribe', async (req, res) => {
 
   if (recordingStatus === 'no-audio' || !recordingUrl) {
     twiml.say({ language: 'es-MX' }, 'No escuché nada. ¿Podría repetir?');
-    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
     return res.type('text/xml').send(twiml.toString());
   }
 
@@ -202,12 +202,12 @@ router.post('/transcribe', async (req, res) => {
       aiResponse = result.content;
     }
 
-    logger.info('AI response', { callSid, text: aiResponse });
+    logger.info('AI response', { callSid, text: aiResponse, host: req.headers.host });
     await conversationManager.addMessage(callSid, 'assistant', aiResponse);
 
     twiml.say({ language: 'es-MX' }, aiResponse);
 
-    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');
     twiml.hangup();
 
