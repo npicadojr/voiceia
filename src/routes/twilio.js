@@ -107,7 +107,6 @@ router.post('/transcribe', async (req, res) => {
     const callRecord = await callModel.getCallBySid(callSid);
     const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
     const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
-    const voiceId = tenant?.elevenlabs_voice_id || undefined;
 
     const userText = await openaiService.transcribeAudio(recordingUrl);
     logger.info('User said', { callSid, text: userText });
@@ -138,11 +137,7 @@ router.post('/transcribe', async (req, res) => {
       await conversationManager.endConversation(callSid, extractedData);
 
       const farewellText = 'Fue un placer hablar con usted. ¡Que tenga un excelente día! Hasta luego.';
-      let audioUrl;
-      try { const tts = await elevenlabsService.textToSpeech(farewellText, voiceId); audioUrl = tts.url; } catch {}
-
-      if (audioUrl) twiml.play(audioUrl);
-      else twiml.say({ language: 'es-MX' }, farewellText);
+      twiml.say({ language: 'es-MX' }, farewellText);
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
     }
@@ -210,13 +205,7 @@ router.post('/transcribe', async (req, res) => {
     logger.info('AI response', { callSid, text: aiResponse });
     await conversationManager.addMessage(callSid, 'assistant', aiResponse);
 
-    let audioUrl;
-    try { const tts = await elevenlabsService.textToSpeech(aiResponse, voiceId); audioUrl = tts.url; } catch (err) {
-      logger.warn('OpenAI TTS failed', { err: err.message });
-    }
-
-    if (audioUrl) twiml.play(audioUrl);
-    else twiml.say({ language: 'es-MX' }, aiResponse);
+    twiml.say({ language: 'es-MX' }, aiResponse);
 
     twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 5, playBeep: false, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');
