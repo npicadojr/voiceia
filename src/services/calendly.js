@@ -57,7 +57,7 @@ async function createEvent({ name, email, startTime, purpose }, tenant = {}) {
     name,
     email,
     message: prefilled
-      ? `Listo, te envío un SMS con el link para confirmar tu cita.`
+      ? `Perfecto, le enviaré el link a su correo para confirmar la cita.`
       : 'No pude generar el link de reserva, contacta directamente.',
   };
 }

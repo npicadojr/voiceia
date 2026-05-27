@@ -9,6 +9,7 @@ const callModel      = require('../models/call');
 const leadModel      = require('../models/lead');
 const tenantModel    = require('../models/tenant');
 const conversationManager = require('../utils/conversationManager');
+const emailService   = require('../services/email');
 const logger         = require('../utils/logger');
 
 const AGENTS = {
@@ -105,7 +106,15 @@ router.post('/transcribe', async (req, res) => {
     // Resolve tenant for voice/prompt overrides
     const callRecord = await callModel.getCallBySid(callSid);
     const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
-    const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
+    const provider = tenant?.calendar_provider || 'google';
+    const calendarNote =
+      provider === 'calendly_free'
+        ? '\nNo consultes disponibilidad. Solo pide el nombre completo y el correo del cliente, luego llama send_booking_link. Dile que recibirá un email con el link para elegir su horario.'
+        : provider === 'calendly'
+        ? '\nPide el email antes de confirmar. Con nombre, horario y email confirmado usa book_appointment. El cliente recibirá el link por email.'
+        : '\nPide el email antes de confirmar: "¿A qué email le envío la invitación?". Repítelo deletreándolo y espera confirmación.';
+    const systemPrompt = (tenant?.system_prompt || agent.SYSTEM_PROMPT) + calendarNote;
+    const tools = provider === 'calendly_free' ? agent.TOOLS_FREE_CALENDLY : agent.TOOLS;
     const voiceId = tenant?.elevenlabs_voice_id || undefined;
 
     const userText = await openaiService.transcribeAudio(recordingUrl);
@@ -151,7 +160,7 @@ router.post('/transcribe', async (req, res) => {
     // Use tool calling for appointmentBooker, plain chat for others
     let aiResponse;
     if (agentType === 'appointmentBooker' && agent.TOOLS) {
-      const result = await openaiService.chatWithTools(history, systemPrompt, agent.TOOLS);
+      const result = await openaiService.chatWithTools(history, systemPrompt, tools);
 
       if (result.toolCalls) {
         // Execute each tool call and build updated messages for re-call
@@ -165,18 +174,19 @@ router.post('/transcribe', async (req, res) => {
             logger.error('Tool call failed', { callSid, tool: tc.name, err: err.message });
             toolResult = { error: 'No pude consultar el calendario en este momento. Por favor intenta de nuevo.' };
           }
-          // Send SMS with Calendly link to the caller
-          if (toolResult.schedulingLink && tenant?.phone_number && callRecord?.from_number) {
+          // Send email with Calendly link
+          if (toolResult.schedulingLink && toolResult.email) {
             try {
-              const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-              await twilio.messages.create({
-                body: `Hola ${toolResult.name || ''}, aquí está el link para confirmar tu cita: ${toolResult.schedulingLink}`,
-                from: tenant.phone_number,
-                to: callRecord.from_number,
+              await emailService.sendBookingLink({
+                toEmail: toolResult.email,
+                toName: toolResult.name,
+                link: toolResult.schedulingLink,
+                tenantName: tenant?.name,
+                fromEmail: tenant?.email_from,
               });
-              logger.info('SMS sent with Calendly link', { callSid, to: callRecord.from_number });
-            } catch (smsErr) {
-              logger.warn('Failed to send SMS', { callSid, err: smsErr.message });
+              logger.info('Email sent with Calendly link', { callSid, to: toolResult.email });
+            } catch (emailErr) {
+              logger.warn('Failed to send email', { callSid, err: emailErr.message });
             }
           }
           updatedMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) });

@@ -48,6 +48,13 @@
   .radio-group input[type=radio] { width: auto; }
   .cal-block { display: none; }
   .cal-block.active { display: block; }
+  .provider-cards { display: flex; flex-direction: column; gap: .6rem; margin-bottom: .85rem; }
+  .provider-card { border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; cursor: pointer; transition: border-color .15s; }
+  .provider-card:hover { border-color: var(--muted); }
+  .provider-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .provider-card input[type=radio] { display: none; }
+  .provider-card-title { font-size: .85rem; font-weight: 600; margin-bottom: .3rem; }
+  .provider-card-features { font-size: .75rem; color: var(--muted); line-height: 1.6; }
 </style>
 </head>
 <body>
@@ -76,9 +83,38 @@
 
       <hr class="divider">
       <h3 style="margin-bottom:.75rem">Proveedor de calendario</h3>
-      <div class="radio-group">
-        <label><input type="radio" name="cal-provider" value="google" onchange="switchCalProvider('google')"> Google Calendar</label>
-        <label><input type="radio" name="cal-provider" value="calendly" onchange="switchCalProvider('calendly')"> Calendly</label>
+      <div class="provider-cards">
+        <label class="provider-card" id="card-google" onclick="switchCalProvider('google')">
+          <input type="radio" name="cal-provider" value="google">
+          <div class="provider-card-title">Google Calendar</div>
+          <div class="provider-card-features">
+            ✅ Confirma la cita <strong>durante</strong> la llamada<br>
+            ✅ Envía invitación directo al email del cliente<br>
+            ✅ Consulta disponibilidad en tiempo real<br>
+            → Requiere: Google Refresh Token + Calendar ID
+          </div>
+        </label>
+        <label class="provider-card" id="card-calendly" onclick="switchCalProvider('calendly')">
+          <input type="radio" name="cal-provider" value="calendly">
+          <div class="provider-card-title">Calendly API (plan de pago)</div>
+          <div class="provider-card-features">
+            ✅ Consulta horarios disponibles en tiempo real<br>
+            ✅ Envía email con link pre-rellenado (nombre + email)<br>
+            ℹ️ El cliente abre el link para confirmar<br>
+            → Requiere: Plan Teams (~$16/mes) + API Token + Event Type URI
+          </div>
+        </label>
+        <label class="provider-card" id="card-calendly_free" onclick="switchCalProvider('calendly_free')">
+          <input type="radio" name="cal-provider" value="calendly_free">
+          <div class="provider-card-title">Calendly Gratis</div>
+          <div class="provider-card-features">
+            ✅ No requiere cuenta de pago<br>
+            ✅ Envía email con tu link de Calendly<br>
+            ℹ️ El agente no consulta disponibilidad (no hay API)<br>
+            ℹ️ El cliente elige el horario abriendo el link<br>
+            → Requiere: Solo el link de tu Calendly
+          </div>
+        </label>
       </div>
 
       <div class="cal-block" id="cal-google">
@@ -89,6 +125,11 @@
         <div class="field"><label>Calendly API Token</label><input id="c-ctoken" type="password" placeholder="Token personal de Calendly" /></div>
         <div class="field"><label>Calendly Event Type URI</label><input id="c-curi" placeholder="https://api.calendly.com/event_types/…" /></div>
       </div>
+      <div class="cal-block" id="cal-calendly_free">
+        <div class="field"><label>Link de Calendly</label><input id="c-clink" placeholder="https://calendly.com/usuario/evento" /></div>
+      </div>
+
+      <div class="field" style="margin-top:.85rem"><label>Email remitente (From)</label><input id="c-email-from" placeholder="citas@tuempresa.com" /></div>
 
       <div style="display:flex;gap:.5rem;margin-top:.5rem">
         <button class="btn btn-primary" onclick="saveConfig()">Guardar</button>
@@ -148,6 +189,8 @@
     document.getElementById('c-gcal').value   = tenantData.google_calendar_id || 'primary';
     document.getElementById('c-ctoken').value = tenantData.calendly_api_token ? '••••••••' : '';
     document.getElementById('c-curi').value   = tenantData.calendly_event_type_uri || '';
+    document.getElementById('c-clink').value      = tenantData.calendly_link || '';
+    document.getElementById('c-email-from').value = tenantData.email_from || '';
     document.getElementById('tenantApiKey').textContent = tenantData.api_key;
 
     document.getElementById('webhookUrl').textContent = `${window.location.origin}/twilio/voice?tenant=${tenantData.slug}`;
@@ -156,8 +199,12 @@
   }
 
   function switchCalProvider(provider) {
-    document.getElementById('cal-google').classList.toggle('active', provider === 'google');
-    document.getElementById('cal-calendly').classList.toggle('active', provider === 'calendly');
+    ['google', 'calendly', 'calendly_free'].forEach(p => {
+      document.getElementById(`cal-${p}`).classList.toggle('active', p === provider);
+      document.getElementById(`card-${p}`).classList.toggle('selected', p === provider);
+    });
+    const radio = document.querySelector(`input[name=cal-provider][value="${provider}"]`);
+    if (radio) radio.checked = true;
   }
 
   async function loadCalls() {
@@ -206,6 +253,8 @@
       calendar_provider: provider,
       google_calendar_id: document.getElementById('c-gcal').value.trim() || 'primary',
       calendly_event_type_uri: document.getElementById('c-curi').value.trim() || null,
+      calendly_link: document.getElementById('c-clink').value.trim() || null,
+      email_from: document.getElementById('c-email-from').value.trim() || null,
     };
     if (gtoken && gtoken !== '••••••••') fields.google_refresh_token = gtoken;
     if (ctoken && ctoken !== '••••••••') fields.calendly_api_token = ctoken;

@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   calendar_provider     VARCHAR(20)  DEFAULT 'google',
   calendly_api_token    TEXT,
   calendly_event_type_uri TEXT,
+  calendly_link         TEXT,
+  email_from            VARCHAR(120),
   timezone              VARCHAR(50)  DEFAULT 'America/Panama',
   active                BOOLEAN DEFAULT TRUE,
   created_at            TIMESTAMPTZ DEFAULT NOW()
@@ -102,4 +104,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_configs_tenant ON agent_configs(tenant_id);
 -- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendar_provider VARCHAR(20) DEFAULT 'google';
 -- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendly_api_token TEXT;
 -- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendly_event_type_uri TEXT;
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendly_link TEXT;
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS email_from VARCHAR(120);
 -- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'America/Panama';

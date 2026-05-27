@@ -8,17 +8,18 @@
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@vercel/blob": "^0.27.0",
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "form-data": "^4.0.0",
     "googleapis": "^140.0.1",
     "openai": "^4.52.0",
-    "@supabase/supabase-js": "^2.45.0",
+    "resend": "^6.12.4",
     "twilio": "^5.2.3",
     "uuid": "^9.0.1",
-    "winston": "^3.13.0",
-    "@vercel/blob": "^0.27.0"
+    "winston": "^3.13.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

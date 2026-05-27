@@ -1,7 +1,7 @@
 const supabase = require('../supabase');
 const { generateApiKey } = require('../utils/apiKey');
 
-async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId, systemPrompt, greetingText, calendarProvider, calendlyApiToken, calendlyEventTypeUri, timezone }) {
+async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId, systemPrompt, greetingText, calendarProvider, calendlyApiToken, calendlyEventTypeUri, calendlyLink, emailFrom, timezone }) {
   const apiKey = generateApiKey();
   const { data, error } = await supabase
     .from('tenants')
@@ -19,6 +19,8 @@ async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber
       calendar_provider: calendarProvider || 'google',
       calendly_api_token: calendlyApiToken || null,
       calendly_event_type_uri: calendlyEventTypeUri || null,
+      calendly_link: calendlyLink || null,
+      email_from: emailFrom || null,
       timezone: timezone || 'America/Panama',
       api_key: apiKey,
     })

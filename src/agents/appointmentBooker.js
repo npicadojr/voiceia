@@ -83,6 +83,12 @@ async function executeToolCall(toolName, args, tenant = {}) {
     return { booked: true, eventId: event.id, message: `Cita confirmada para ${new Date(args.startTime).toLocaleString('es-MX')}` };
   }
 
+  if (toolName === 'send_booking_link') {
+    const link = tenant.calendly_link;
+    if (!link) return { error: 'No hay link de Calendly configurado para este cliente.' };
+    return { schedulingLink: link, name: args.name, email: args.email, message: 'Perfecto, le enviaré el link a su correo para que elija el horario.' };
+  }
+
   return { error: `Herramienta desconocida: ${toolName}` };
 }
 
@@ -118,4 +124,22 @@ async function extractBookingData(messages) {
   try { return await extractStructuredData(messages, BOOKING_SCHEMA); } catch { return {}; }
 }
 
-module.exports = { SYSTEM_PROMPT, TOOLS, executeToolCall, isEndIntent, shouldTransferToHuman, extractBookingData };
+const TOOLS_FREE_CALENDLY = [
+  {
+    type: 'function',
+    function: {
+      name: 'send_booking_link',
+      description: 'Envía el link de Calendly al correo del cliente para que elija su horario',
+      parameters: {
+        type: 'object',
+        properties: {
+          name:  { type: 'string', description: 'Nombre completo del cliente' },
+          email: { type: 'string', description: 'Correo electrónico del cliente' },
+        },
+        required: ['name', 'email'],
+      },
+    },
+  },
+];
+
+module.exports = { SYSTEM_PROMPT, TOOLS, TOOLS_FREE_CALENDLY, executeToolCall, isEndIntent, shouldTransferToHuman, extractBookingData };
