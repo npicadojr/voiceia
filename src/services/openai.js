@@ -20,6 +20,7 @@ async function transcribeAudio(recordingUrl) {
   const url = recordingUrl.endsWith('.mp3') ? recordingUrl : `${recordingUrl}.mp3`;
 
   const audioPath = path.join('/tmp/audio', `rec_${uuidv4()}.mp3`);
+  fs.mkdirSync(path.dirname(audioPath), { recursive: true });
 
   const response = await axios.get(url, {
     responseType: 'stream',
