@@ -156,6 +156,19 @@
     <button class="btn btn-ghost" onclick="loadCalls()">↻ Actualizar</button>
   </div>
   <div id="callsTable"><p style="color:var(--muted);font-size:.875rem">Cargando…</p></div>
+
+  <!-- Cost panel -->
+  <div style="margin-top:2rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 style="font-size:1rem;font-weight:600">Estimación de costos</h2>
+      <select id="cost-period" onchange="renderCosts()" style="width:auto;padding:.35rem .65rem;font-size:.8rem">
+        <option value="month">Este mes</option>
+        <option value="30days">Últimos 30 días</option>
+        <option value="all">Todo el tiempo</option>
+      </select>
+    </div>
+    <div id="costsPanel"><p style="color:var(--muted);font-size:.875rem">Cargando…</p></div>
+  </div>
 </main>
 
 <div class="toast" id="toast">✅ Guardado</div>
@@ -165,6 +178,7 @@
   const tenantId = params.get('id');
   const adminKey = params.get('key') || '';
   let tenantData = null;
+  let allCalls = [];
 
   async function init() {
     const res = await fetch(`/admin/tenants/${tenantId}`, { headers: { 'x-api-key': adminKey } });
@@ -196,6 +210,7 @@
     document.getElementById('webhookUrl').textContent = `${window.location.origin}/twilio/voice?tenant=${tenantData.slug}`;
 
     loadCalls();
+    loadCostData();
   }
 
   function switchCalProvider(provider) {
@@ -235,6 +250,74 @@
         <thead><tr><th>SID</th><th>Dirección</th><th>Números</th><th>Agente</th><th>Estado</th><th>Fecha</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
+  }
+
+  async function loadCostData() {
+    try {
+      const res = await fetch(`/admin/tenants/${tenantId}/calls?limit=500`, { headers: { 'x-api-key': adminKey } });
+      const data = await res.json();
+      allCalls = data.calls || [];
+      renderCosts();
+    } catch { document.getElementById('costsPanel').innerHTML = '<p style="color:var(--muted);font-size:.875rem">Error al cargar costos.</p>'; }
+  }
+
+  function renderCosts() {
+    const period = document.getElementById('cost-period').value;
+    const now = new Date();
+    let since;
+    if (period === 'month') {
+      since = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (period === '30days') {
+      since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else {
+      since = new Date(0);
+    }
+
+    const filtered = allCalls.filter(c => new Date(c.created_at) >= since);
+    if (!filtered.length) {
+      document.getElementById('costsPanel').innerHTML = '<p style="color:var(--muted);font-size:.875rem">Sin llamadas en el período seleccionado.</p>';
+      return;
+    }
+
+    let inboundSec = 0, outboundSec = 0;
+    for (const c of filtered) {
+      const secs = c.duration_seconds || 0;
+      if (c.direction === 'outbound') outboundSec += secs;
+      else inboundSec += secs;
+    }
+
+    const totalSec = inboundSec + outboundSec;
+    const totalMin = totalSec / 60;
+    const inMin = inboundSec / 60;
+    const outMin = outboundSec / 60;
+
+    // Per-minute cost rates
+    const rates = { twilioIn: 0.0085, twilioOut: 0.013, whisper: 0.006, gpt4o: 0.015, elevenlabs: 0.010 };
+    const twilioC = inMin * rates.twilioIn + outMin * rates.twilioOut;
+    const whisperC = totalMin * rates.whisper;
+    const gptC = totalMin * rates.gpt4o;
+    const ttsC = totalMin * rates.elevenlabs;
+    const totalC = twilioC + whisperC + gptC + ttsC;
+    const avgPerCall = filtered.length ? totalC / filtered.length : 0;
+
+    const fmt = n => `$${n.toFixed(3)}`;
+    const fmtMin = n => `${n.toFixed(1)} min`;
+
+    document.getElementById('costsPanel').innerHTML = `
+      <table>
+        <thead><tr><th>Servicio</th><th>Minutos</th><th>Tarifa/min</th><th>Costo</th></tr></thead>
+        <tbody>
+          <tr><td>Twilio (entrante)</td><td>${fmtMin(inMin)}</td><td>$${rates.twilioIn}</td><td>${fmt(inMin * rates.twilioIn)}</td></tr>
+          <tr><td>Twilio (saliente)</td><td>${fmtMin(outMin)}</td><td>$${rates.twilioOut}</td><td>${fmt(outMin * rates.twilioOut)}</td></tr>
+          <tr><td>Whisper STT</td><td>${fmtMin(totalMin)}</td><td>$${rates.whisper}</td><td>${fmt(whisperC)}</td></tr>
+          <tr><td>GPT-4o</td><td>${fmtMin(totalMin)}</td><td>$${rates.gpt4o}</td><td>${fmt(gptC)}</td></tr>
+          <tr><td>ElevenLabs TTS</td><td>${fmtMin(totalMin)}</td><td>$${rates.elevenlabs}</td><td>${fmt(ttsC)}</td></tr>
+          <tr style="font-weight:600;background:var(--accent-dim)"><td>TOTAL</td><td>${fmtMin(totalMin)}</td><td>—</td><td>${fmt(totalC)}</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--muted);font-size:.78rem;margin-top:.75rem">
+        ${filtered.length} llamadas · ${fmtMin(totalMin)} totales · Promedio ${fmt(avgPerCall)}/llamada
+      </p>`;
   }
 
   async function saveConfig() {

@@ -106,15 +106,7 @@ router.post('/transcribe', async (req, res) => {
     // Resolve tenant for voice/prompt overrides
     const callRecord = await callModel.getCallBySid(callSid);
     const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
-    const provider = tenant?.calendar_provider || 'google';
-    const calendarNote =
-      provider === 'calendly_free'
-        ? '\nNo consultes disponibilidad. Solo pide el nombre completo y el correo del cliente, luego llama send_booking_link. Dile que recibirá un email con el link para elegir su horario.'
-        : provider === 'calendly'
-        ? '\nPide el email antes de confirmar. Con nombre, horario y email confirmado usa book_appointment. El cliente recibirá el link por email.'
-        : '\nPide el email antes de confirmar: "¿A qué email le envío la invitación?". Repítelo deletreándolo y espera confirmación.';
-    const systemPrompt = (tenant?.system_prompt || agent.SYSTEM_PROMPT) + calendarNote;
-    const tools = provider === 'calendly_free' ? agent.TOOLS_FREE_CALENDLY : agent.TOOLS;
+    const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
     const voiceId = tenant?.elevenlabs_voice_id || undefined;
 
     const userText = await openaiService.transcribeAudio(recordingUrl);
@@ -160,7 +152,16 @@ router.post('/transcribe', async (req, res) => {
     // Use tool calling for appointmentBooker, plain chat for others
     let aiResponse;
     if (agentType === 'appointmentBooker' && agent.TOOLS) {
-      const result = await openaiService.chatWithTools(history, systemPrompt, tools);
+      const provider = tenant?.calendar_provider || 'google';
+      const calendarNote =
+        provider === 'calendly_free'
+          ? '\nNo consultes disponibilidad. Solo pide el nombre completo y el correo del cliente, luego llama send_booking_link. Dile que recibirá un email con el link para elegir su horario.'
+          : provider === 'calendly'
+          ? '\nPide el email antes de confirmar. Con nombre, horario y email confirmado usa book_appointment. El cliente recibirá el link por email.'
+          : '\nPide el email antes de confirmar: "¿A qué email le envío la invitación?". Repítelo deletreándolo y espera confirmación.';
+      const appointmentPrompt = systemPrompt + calendarNote;
+      const tools = provider === 'calendly_free' ? agent.TOOLS_FREE_CALENDLY : agent.TOOLS;
+      const result = await openaiService.chatWithTools(history, appointmentPrompt, tools);
 
       if (result.toolCalls) {
         // Execute each tool call and build updated messages for re-call
@@ -195,7 +196,7 @@ router.post('/transcribe', async (req, res) => {
         // Re-call GPT-4o without tools to get the natural language response
         const final = await openaiService.chat(
           updatedMessages.filter(m => m.role !== 'system'),
-          systemPrompt
+          appointmentPrompt
         );
         aiResponse = final.content;
       } else {
