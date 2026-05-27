@@ -70,7 +70,7 @@ router.post('/voice', async (req, res) => {
       method: 'POST',
       maxLength: 30,
       timeout: 2,
-      playBeep: true,
+      playBeep: false,
       trim: 'trim-silence',
     });
 
@@ -95,7 +95,7 @@ router.post('/transcribe', async (req, res) => {
 
   if (recordingStatus === 'no-audio' || !recordingUrl) {
     twiml.say({ language: 'es-MX' }, 'No escuché nada. ¿Podría repetir?');
-    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: false, trim: 'trim-silence' });
     return res.type('text/xml').send(twiml.toString());
   }
 
@@ -204,7 +204,7 @@ router.post('/transcribe', async (req, res) => {
     logger.info('AI response', { callSid, text: aiResponse, host: req.headers.host });
 
     twiml.say({ language: 'es-MX' }, aiResponse);
-    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: false, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');
     twiml.hangup();
 
@@ -215,7 +215,7 @@ router.post('/transcribe', async (req, res) => {
   } catch (err) {
     logger.error('Error in /twilio/transcribe', { callSid, err: err.message });
     twiml.say({ language: 'es-MX' }, 'Lo siento, ocurrió un error procesando su respuesta. Por favor intente de nuevo.');
-    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: true, trim: 'trim-silence' });
+    twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: false, trim: 'trim-silence' });
   }
 
   res.type('text/xml').send(twiml.toString());

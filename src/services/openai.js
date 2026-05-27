@@ -58,14 +58,14 @@ async function chat(messages, systemPrompt) {
   const full = [{ role: 'system', content: systemPrompt }, ...messages];
 
   const completion = await getClient().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: full,
     temperature: 0.7,
-    max_tokens: 400,
+    max_tokens: 150,
   });
 
   const content = completion.choices[0].message.content;
-  logger.debug('GPT-4o response', { tokens: completion.usage?.total_tokens });
+  logger.debug('GPT-4o-mini response', { tokens: completion.usage?.total_tokens });
   return { content, usage: completion.usage };
 }
 
@@ -102,11 +102,11 @@ async function chatWithTools(messages, systemPrompt, tools) {
   const full = [{ role: 'system', content: systemPrompt }, ...messages];
 
   const completion = await getClient().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: full,
     tools,
     temperature: 0.7,
-    max_tokens: 400,
+    max_tokens: 150,
   });
 
   const choice = completion.choices[0];
