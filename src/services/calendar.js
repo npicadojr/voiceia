@@ -16,13 +16,22 @@ function calendarId(tenant = {}) {
   return tenant.google_calendar_id || process.env.GOOGLE_CALENDAR_ID || 'primary';
 }
 
+function toTzISO(dateStr, time, tz) {
+  // Interpreta "YYYY-MM-DD" + "HH:mm:ss" en la timezone del tenant y devuelve ISO UTC
+  const naive = new Date(`${dateStr}T${time}`);
+  const localStr = naive.toLocaleString('sv-SE', { timeZone: tz }); // "YYYY-MM-DD HH:mm:ss"
+  const asLocal = new Date(localStr.replace(' ', 'T'));
+  const offset = naive.getTime() - asLocal.getTime();
+  return new Date(naive.getTime() + offset).toISOString();
+}
+
 async function getAvailableSlots(date, tenant = {}) {
   const calendar = getCalendarClient(tenant);
   const calId = calendarId(tenant);
+  const tz = tenant.timezone || 'America/Panama';
 
-  const day = new Date(date);
-  const timeMin = new Date(day.setHours(8, 0, 0, 0)).toISOString();
-  const timeMax = new Date(day.setHours(18, 0, 0, 0)).toISOString();
+  const timeMin = toTzISO(date, '08:00:00', tz);
+  const timeMax = toTzISO(date, '18:00:00', tz);
 
   const { data } = await calendar.freebusy.query({
     requestBody: { timeMin, timeMax, items: [{ id: calId }] },

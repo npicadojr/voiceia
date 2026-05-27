@@ -1,7 +1,7 @@
 const supabase = require('../supabase');
 const { generateApiKey } = require('../utils/apiKey');
 
-async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId }) {
+async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId, systemPrompt, greetingText, calendarProvider, calendlyApiToken, calendlyEventTypeUri, timezone }) {
   const apiKey = generateApiKey();
   const { data, error } = await supabase
     .from('tenants')
@@ -11,9 +11,15 @@ async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber
       phone_number: phoneNumber,
       elevenlabs_voice_id: voiceId || process.env.ELEVENLABS_VOICE_ID,
       human_agent_number: humanAgentNumber,
-      default_agent: defaultAgent || 'leadQualifier',
+      default_agent: defaultAgent || 'appointmentBooker',
+      system_prompt: systemPrompt || null,
+      greeting_text: greetingText || null,
       google_refresh_token: googleRefreshToken || null,
       google_calendar_id: googleCalendarId || 'primary',
+      calendar_provider: calendarProvider || 'google',
+      calendly_api_token: calendlyApiToken || null,
+      calendly_event_type_uri: calendlyEventTypeUri || null,
+      timezone: timezone || 'America/Panama',
       api_key: apiKey,
     })
     .select()

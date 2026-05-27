@@ -46,7 +46,7 @@ router.get('/tenants/:id', async (req, res) => {
 
 // PUT /admin/tenants/:id
 router.put('/tenants/:id', async (req, res) => {
-  const allowed = ['name', 'phone_number', 'elevenlabs_voice_id', 'human_agent_number', 'active', 'default_agent', 'google_refresh_token', 'google_calendar_id'];
+  const allowed = ['name', 'phone_number', 'elevenlabs_voice_id', 'human_agent_number', 'active', 'default_agent', 'system_prompt', 'greeting_text', 'google_refresh_token', 'google_calendar_id', 'calendar_provider', 'calendly_api_token', 'calendly_event_type_uri', 'timezone'];
   const fields = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
 
   try {

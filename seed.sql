@@ -3,18 +3,24 @@
 
 -- ── Tenants ──────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tenants (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name                 VARCHAR(120) NOT NULL,
-  slug                 VARCHAR(60)  UNIQUE NOT NULL,
-  phone_number         VARCHAR(20),
-  elevenlabs_voice_id  VARCHAR(80),
-  human_agent_number   VARCHAR(20),
-  api_key              VARCHAR(80)  UNIQUE NOT NULL,
-  default_agent        VARCHAR(30)  DEFAULT 'leadQualifier',
-  google_refresh_token TEXT,
-  google_calendar_id   VARCHAR(120) DEFAULT 'primary',
-  active               BOOLEAN DEFAULT TRUE,
-  created_at           TIMESTAMPTZ DEFAULT NOW()
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                  VARCHAR(120) NOT NULL,
+  slug                  VARCHAR(60)  UNIQUE NOT NULL,
+  phone_number          VARCHAR(20),
+  elevenlabs_voice_id   VARCHAR(80),
+  human_agent_number    VARCHAR(20),
+  api_key               VARCHAR(80)  UNIQUE NOT NULL,
+  default_agent         VARCHAR(30)  DEFAULT 'appointmentBooker',
+  system_prompt         TEXT,
+  greeting_text         TEXT,
+  google_refresh_token  TEXT,
+  google_calendar_id    VARCHAR(120) DEFAULT 'primary',
+  calendar_provider     VARCHAR(20)  DEFAULT 'google',
+  calendly_api_token    TEXT,
+  calendly_event_type_uri TEXT,
+  timezone              VARCHAR(50)  DEFAULT 'America/Panama',
+  active                BOOLEAN DEFAULT TRUE,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ── Agent configs (custom prompts/greetings per tenant per agent) ─────────────
@@ -88,3 +94,12 @@ CREATE INDEX IF NOT EXISTS idx_agent_configs_tenant ON agent_configs(tenant_id);
 -- ── Migration (si ya tienes tablas sin tenant_id) ────────────────────────────
 -- ALTER TABLE calls ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
 -- ALTER TABLE leads ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
+
+-- ── Migration: prompt único + proveedor de calendario ────────────────────────
+-- Ejecutar en Supabase SQL Editor si ya tienes la tabla tenants creada:
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS system_prompt TEXT;
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS greeting_text TEXT;
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendar_provider VARCHAR(20) DEFAULT 'google';
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendly_api_token TEXT;
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS calendly_event_type_uri TEXT;
+-- ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'America/Panama';

@@ -22,19 +22,14 @@
   .card h3 { font-size: .875rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 1rem; }
   .field { margin-bottom: .85rem; }
   label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: .3rem; font-weight: 500; }
-  input, textarea { width: 100%; padding: .5rem .75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .875rem; outline: none; resize: vertical; }
-  input:focus, textarea:focus { border-color: var(--accent); }
+  input, textarea, select { width: 100%; padding: .5rem .75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .875rem; outline: none; resize: vertical; }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   .btn { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .9rem; border-radius: 8px; font-size: .8rem; font-weight: 500; cursor: pointer; border: none; transition: opacity .15s; }
   .btn:hover { opacity: .85; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
   .btn-danger { background: transparent; border: 1px solid var(--red); color: var(--red); }
   .webhook-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; font-family: monospace; font-size: .78rem; color: var(--green); word-break: break-all; }
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
-  .tab { padding: .6rem 1.1rem; font-size: .875rem; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); background: none; border-top: none; border-left: none; border-right: none; }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
   table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); font-size: .85rem; }
   th { padding: .65rem 1rem; text-align: left; font-size: .7rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; background: var(--bg); }
   td { padding: .75rem 1rem; border-top: 1px solid var(--border); }
@@ -47,6 +42,12 @@
   .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
   .toast { display: none; position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--surface); border: 1px solid var(--green); border-radius: 10px; padding: .75rem 1.25rem; font-size: .85rem; z-index: 200; }
   .toast.show { display: block; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+  .radio-group { display: flex; gap: 1rem; margin-bottom: .85rem; }
+  .radio-group label { display: flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--text); cursor: pointer; font-weight: 400; margin: 0; }
+  .radio-group input[type=radio] { width: auto; }
+  .cal-block { display: none; }
+  .cal-block.active { display: block; }
 </style>
 </head>
 <body>
@@ -66,16 +67,29 @@
       <div class="field"><label>Número Twilio</label><input id="c-phone" placeholder="+15551234567" /></div>
       <div class="field"><label>ElevenLabs Voice ID</label><input id="c-voice" /></div>
       <div class="field"><label>Número agente humano</label><input id="c-human" /></div>
-      <div class="field"><label>Agente por defecto</label>
-        <select id="c-agent">
-          <option value="leadQualifier">Calificador de Leads</option>
-          <option value="appointmentBooker">Agendador de Citas</option>
-          <option value="surveyor">Encuestador</option>
-          <option value="support">Soporte Nivel 1</option>
-        </select>
+      <div class="field"><label>Zona horaria</label><input id="c-tz" placeholder="America/Bogota, America/Panama, Europe/Madrid" /></div>
+
+      <hr class="divider">
+      <h3 style="margin-bottom:.75rem">Prompt del asistente</h3>
+      <div class="field"><label>Saludo de bienvenida</label><input id="c-greeting" placeholder="Hola, soy Ana, tu asistente…" /></div>
+      <div class="field"><label>System prompt</label><textarea id="c-prompt" rows="5" placeholder="Eres un asistente de…"></textarea></div>
+
+      <hr class="divider">
+      <h3 style="margin-bottom:.75rem">Proveedor de calendario</h3>
+      <div class="radio-group">
+        <label><input type="radio" name="cal-provider" value="google" onchange="switchCalProvider('google')"> Google Calendar</label>
+        <label><input type="radio" name="cal-provider" value="calendly" onchange="switchCalProvider('calendly')"> Calendly</label>
       </div>
-      <div class="field"><label>Google Refresh Token</label><input id="c-gtoken" type="password" placeholder="Pegar refresh token OAuth" /></div>
-      <div class="field"><label>Google Calendar ID</label><input id="c-gcal" placeholder="primary  ó  email@gmail.com" /></div>
+
+      <div class="cal-block" id="cal-google">
+        <div class="field"><label>Google Refresh Token</label><input id="c-gtoken" type="password" placeholder="Pegar refresh token OAuth" /></div>
+        <div class="field"><label>Google Calendar ID</label><input id="c-gcal" placeholder="primary  ó  email@gmail.com" /></div>
+      </div>
+      <div class="cal-block" id="cal-calendly">
+        <div class="field"><label>Calendly API Token</label><input id="c-ctoken" type="password" placeholder="Token personal de Calendly" /></div>
+        <div class="field"><label>Calendly Event Type URI</label><input id="c-curi" placeholder="https://api.calendly.com/event_types/…" /></div>
+      </div>
+
       <div style="display:flex;gap:.5rem;margin-top:.5rem">
         <button class="btn btn-primary" onclick="saveConfig()">Guardar</button>
         <button class="btn btn-danger" onclick="toggleActive()">Desactivar</button>
@@ -95,26 +109,12 @@
     </div>
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('calls')">Llamadas</button>
-    <button class="tab" onclick="switchTab('agents')">Agentes</button>
+  <!-- Calls -->
+  <div class="section-header">
+    <span style="font-size:.875rem;color:var(--muted)" id="callCount">—</span>
+    <button class="btn btn-ghost" onclick="loadCalls()">↻ Actualizar</button>
   </div>
-
-  <!-- Calls panel -->
-  <div id="tab-calls" class="tab-panel active">
-    <div class="section-header">
-      <span style="font-size:.875rem;color:var(--muted)" id="callCount">—</span>
-      <button class="btn btn-ghost" onclick="loadCalls()">↻ Actualizar</button>
-    </div>
-    <div id="callsTable"><p style="color:var(--muted);font-size:.875rem">Cargando…</p></div>
-  </div>
-
-  <!-- Agents panel -->
-  <div id="tab-agents" class="tab-panel">
-    <p style="font-size:.8rem;color:var(--muted);margin-bottom:1.25rem">Personaliza el prompt y saludo de cada agente para este cliente. Si lo dejas vacío, se usará el prompt por defecto.</p>
-    <div id="agentForms"></div>
-  </div>
+  <div id="callsTable"><p style="color:var(--muted);font-size:.875rem">Cargando…</p></div>
 </main>
 
 <div class="toast" id="toast">✅ Guardado</div>
@@ -125,13 +125,6 @@
   const adminKey = params.get('key') || '';
   let tenantData = null;
 
-  const AGENT_LABELS = {
-    leadQualifier: 'Calificador de Leads',
-    appointmentBooker: 'Agendador de Citas',
-    surveyor: 'Encuestador',
-    support: 'Soporte Nivel 1',
-  };
-
   async function init() {
     const res = await fetch(`/admin/tenants/${tenantId}`, { headers: { 'x-api-key': adminKey } });
     if (!res.ok) { document.body.innerHTML = '<div style="padding:2rem;color:#ef4444">No autorizado o cliente no encontrado.</div>'; return; }
@@ -139,21 +132,32 @@
 
     document.getElementById('tenantName').textContent = tenantData.name;
     document.getElementById('tenantSlug').textContent = `/${tenantData.slug}`;
-    document.getElementById('c-name').value  = tenantData.name || '';
-    document.getElementById('c-phone').value = tenantData.phone_number || '';
-    document.getElementById('c-voice').value = tenantData.elevenlabs_voice_id || '';
-    document.getElementById('c-human').value = tenantData.human_agent_number || '';
-    document.getElementById('c-agent').value = tenantData.default_agent || 'leadQualifier';
+    document.getElementById('c-name').value    = tenantData.name || '';
+    document.getElementById('c-phone').value   = tenantData.phone_number || '';
+    document.getElementById('c-voice').value   = tenantData.elevenlabs_voice_id || '';
+    document.getElementById('c-human').value   = tenantData.human_agent_number || '';
+    document.getElementById('c-greeting').value = tenantData.greeting_text || '';
+    document.getElementById('c-prompt').value  = tenantData.system_prompt || '';
+    document.getElementById('c-tz').value      = tenantData.timezone || 'America/Panama';
+
+    const provider = tenantData.calendar_provider || 'google';
+    document.querySelector(`input[name=cal-provider][value="${provider}"]`).checked = true;
+    switchCalProvider(provider);
+
     document.getElementById('c-gtoken').value = tenantData.google_refresh_token ? '••••••••' : '';
     document.getElementById('c-gcal').value   = tenantData.google_calendar_id || 'primary';
+    document.getElementById('c-ctoken').value = tenantData.calendly_api_token ? '••••••••' : '';
+    document.getElementById('c-curi').value   = tenantData.calendly_event_type_uri || '';
     document.getElementById('tenantApiKey').textContent = tenantData.api_key;
 
-    const baseUrl = window.location.origin;
-    const defaultAgent = tenantData.default_agent || 'leadQualifier';
-    document.getElementById('webhookUrl').textContent = `${baseUrl}/twilio/voice?tenant=${tenantData.slug}&agent=${defaultAgent}`;
+    document.getElementById('webhookUrl').textContent = `${window.location.origin}/twilio/voice?tenant=${tenantData.slug}`;
 
     loadCalls();
-    renderAgentForms();
+  }
+
+  function switchCalProvider(provider) {
+    document.getElementById('cal-google').classList.toggle('active', provider === 'google');
+    document.getElementById('cal-calendly').classList.toggle('active', provider === 'calendly');
   }
 
   async function loadCalls() {
@@ -186,44 +190,26 @@
       </table>`;
   }
 
-  function renderAgentForms() {
-    const configs = {};
-    (tenantData.agent_configs || []).forEach(c => { configs[c.agent_type] = c; });
-    const activeAgent = tenantData.default_agent || 'leadQualifier';
-
-    const html = Object.entries(AGENT_LABELS).map(([type, label]) => {
-      const cfg = configs[type] || {};
-      const isActive = type === activeAgent;
-      return `
-        <div class="card" style="margin-bottom:1rem;${isActive ? 'border-color:var(--accent)' : 'opacity:.6'}">
-          <h3 style="display:flex;align-items:center;gap:.5rem">${label}
-            ${isActive ? '<span class="badge badge-green">● Activo</span>' : '<span style="font-size:.7rem;color:var(--muted)">(no activo)</span>'}
-          </h3>
-          <div class="field"><label>Saludo de bienvenida</label>
-            <input id="ag-greeting-${type}" value="${esc(cfg.greeting_text || '')}" placeholder="Hola, soy..."/>
-          </div>
-          <div class="field"><label>System prompt</label>
-            <textarea id="ag-prompt-${type}" rows="5" placeholder="Eres un asistente...">${esc(cfg.system_prompt || '')}</textarea>
-          </div>
-          <button class="btn btn-primary" onclick="saveAgent('${type}')">Guardar agente</button>
-        </div>`;
-    }).join('');
-
-    document.getElementById('agentForms').innerHTML = html;
-  }
-
   async function saveConfig() {
+    const provider = document.querySelector('input[name=cal-provider]:checked').value;
     const gtoken = document.getElementById('c-gtoken').value.trim();
+    const ctoken = document.getElementById('c-ctoken').value.trim();
+
     const fields = {
       name: document.getElementById('c-name').value.trim(),
       phone_number: document.getElementById('c-phone').value.trim() || null,
       elevenlabs_voice_id: document.getElementById('c-voice').value.trim() || null,
       human_agent_number: document.getElementById('c-human').value.trim() || null,
-      default_agent: document.getElementById('c-agent').value,
+      timezone: document.getElementById('c-tz').value.trim() || 'America/Panama',
+      system_prompt: document.getElementById('c-prompt').value.trim() || null,
+      greeting_text: document.getElementById('c-greeting').value.trim() || null,
+      calendar_provider: provider,
       google_calendar_id: document.getElementById('c-gcal').value.trim() || 'primary',
+      calendly_event_type_uri: document.getElementById('c-curi').value.trim() || null,
     };
-    // Only update token if user typed a new one (not the masked placeholder)
     if (gtoken && gtoken !== '••••••••') fields.google_refresh_token = gtoken;
+    if (ctoken && ctoken !== '••••••••') fields.calendly_api_token = ctoken;
+
     const res = await fetch(`/admin/tenants/${tenantId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': adminKey }, body: JSON.stringify(fields),
     });
@@ -233,29 +219,9 @@
 
   async function toggleActive() {
     if (!confirm('¿Seguro que quieres desactivar este cliente?')) return;
-    await fetch(`/admin/tenants/${tenantId}`, {
-      method: 'DELETE', headers: { 'x-api-key': adminKey },
-    });
+    await fetch(`/admin/tenants/${tenantId}`, { method: 'DELETE', headers: { 'x-api-key': adminKey } });
     showToast('Cliente desactivado');
     setTimeout(goBack, 1500);
-  }
-
-  async function saveAgent(type) {
-    const body = {
-      systemPrompt: document.getElementById(`ag-prompt-${type}`).value.trim() || null,
-      greetingText: document.getElementById(`ag-greeting-${type}`).value.trim() || null,
-    };
-    const res = await fetch(`/admin/tenants/${tenantId}/agents/${type}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': adminKey }, body: JSON.stringify(body),
-    });
-    if (res.ok) showToast(`✅ Agente "${AGENT_LABELS[type]}" guardado`);
-    else showToast('❌ Error al guardar');
-  }
-
-  function switchTab(name) {
-    document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', ['calls','agents'][i] === name));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.getElementById(`tab-${name}`).classList.add('active');
   }
 
   function copyWebhook() { navigator.clipboard.writeText(document.getElementById('webhookUrl').textContent); showToast('URL copiada'); }

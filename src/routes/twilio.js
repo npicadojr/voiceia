@@ -42,11 +42,7 @@ router.post('/voice', async (req, res) => {
     const tenant = await resolveTenant(req.query.tenant);
     const agentType  = req.query.agent || tenant?.default_agent || 'leadQualifier';
 
-    // Load custom agent config if tenant exists
-    let agentConfig = null;
-    if (tenant) agentConfig = await tenantModel.getAgentConfig(tenant.id, agentType);
-
-    const greetingText = agentConfig?.greeting_text || DEFAULT_GREETINGS[agentType] || DEFAULT_GREETINGS.leadQualifier;
+    const greetingText = tenant?.greeting_text || DEFAULT_GREETINGS[agentType] || DEFAULT_GREETINGS.appointmentBooker;
     const voiceId      = tenant?.elevenlabs_voice_id || undefined;
 
     const callRecord = await callModel.createCall({
@@ -109,8 +105,7 @@ router.post('/transcribe', async (req, res) => {
     // Resolve tenant for voice/prompt overrides
     const callRecord = await callModel.getCallBySid(callSid);
     const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
-    const agentConfig = tenant ? await tenantModel.getAgentConfig(tenant.id, agentType) : null;
-    const systemPrompt = agentConfig?.system_prompt || agent.SYSTEM_PROMPT;
+    const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
     const voiceId = tenant?.elevenlabs_voice_id || undefined;
 
     const userText = await openaiService.transcribeAudio(recordingUrl);
@@ -163,7 +158,27 @@ router.post('/transcribe', async (req, res) => {
         const updatedMessages = [...history, result.assistantMessage];
         for (const tc of result.toolCalls) {
           logger.info('Tool call', { callSid, tool: tc.name, args: tc.args });
-          const toolResult = await agent.executeToolCall(tc.name, tc.args, tenant);
+          let toolResult;
+          try {
+            toolResult = await agent.executeToolCall(tc.name, tc.args, tenant);
+          } catch (err) {
+            logger.error('Tool call failed', { callSid, tool: tc.name, err: err.message });
+            toolResult = { error: 'No pude consultar el calendario en este momento. Por favor intenta de nuevo.' };
+          }
+          // Send SMS with Calendly link to the caller
+          if (toolResult.schedulingLink && tenant?.phone_number && callRecord?.from_number) {
+            try {
+              const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+              await twilio.messages.create({
+                body: `Hola ${toolResult.name || ''}, aquí está el link para confirmar tu cita: ${toolResult.schedulingLink}`,
+                from: tenant.phone_number,
+                to: callRecord.from_number,
+              });
+              logger.info('SMS sent with Calendly link', { callSid, to: callRecord.from_number });
+            } catch (smsErr) {
+              logger.warn('Failed to send SMS', { callSid, err: smsErr.message });
+            }
+          }
           updatedMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) });
           await conversationManager.addMessage(callSid, 'tool', JSON.stringify(toolResult));
         }

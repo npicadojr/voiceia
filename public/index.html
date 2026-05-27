@@ -83,14 +83,6 @@
     <div class="field"><label>Número Twilio (E.164)</label><input id="f-phone" placeholder="+15551234567" /></div>
     <div class="field"><label>ElevenLabs Voice ID</label><input id="f-voice" placeholder="21m00Tcm4TlvDq8ikWAM" /></div>
     <div class="field"><label>Número agente humano</label><input id="f-human" placeholder="+15557654321" /></div>
-    <div class="field"><label>Agente por defecto</label>
-      <select id="f-agent">
-        <option value="leadQualifier">Calificador de Leads</option>
-        <option value="appointmentBooker">Agendador de Citas</option>
-        <option value="surveyor">Encuestador</option>
-        <option value="support">Soporte Nivel 1</option>
-      </select>
-    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="createTenant()">Crear cliente</button>
@@ -163,7 +155,6 @@
       phoneNumber: document.getElementById('f-phone').value.trim() || undefined,
       voiceId: document.getElementById('f-voice').value.trim() || undefined,
       humanAgentNumber: document.getElementById('f-human').value.trim() || undefined,
-      defaultAgent: document.getElementById('f-agent').value,
     };
     if (!body.name || !body.slug) return alert('Nombre y slug son requeridos.');
 

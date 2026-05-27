@@ -1,5 +1,6 @@
 const { extractStructuredData } = require('../services/openai');
 const calendarService = require('../services/calendar');
+const calendlyService = require('../services/calendly');
 
 const SYSTEM_PROMPT = `Eres un asistente especializado en agendar citas y reuniones. Eres eficiente, amable y organizado.
 
@@ -8,14 +9,17 @@ Tu misión:
 2. Pregunta el propósito de la reunión y su nombre completo.
 3. Usa la herramienta get_available_slots para consultar los horarios disponibles de la fecha que pida el usuario.
 4. Ofrece los horarios disponibles de forma natural (ej. "Tengo disponible el viernes a las 10am o a las 2pm").
-5. Cuando el usuario confirme un horario, pide su email y usa book_appointment para reservar.
-6. Confirma la cita reservada con fecha, hora y el email donde llegará la invitación.
+5. Cuando el usuario confirme un horario, pide su nombre completo y correo electrónico.
+6. Una vez que tengas el correo, repítelo deletreándolo para confirmar:
+   "Le confirmo el correo: j-u-a-n arroba gmail punto com, ¿es correcto?"
+7. Solo después de que el cliente confirme que el correo es correcto, usa book_appointment para reservar.
+8. Confirma la cita con fecha, hora y el correo donde llegará la confirmación.
 
 Pautas:
 - Habla en español, tono profesional y eficiente.
 - Respuestas cortas (máximo 2 oraciones).
 - Si no hay horarios disponibles, sugiere otra fecha.
-- Siempre confirma antes de reservar: "¿Le confirmo la cita el [fecha] a las [hora]?"`;
+- NUNCA llames book_appointment sin haber confirmado el correo con el cliente.`;
 
 const TOOLS = [
   {
@@ -45,25 +49,32 @@ const TOOLS = [
           startTime: { type: 'string', description: 'Fecha y hora de inicio en ISO 8601' },
           purpose:   { type: 'string', description: 'Propósito o tema de la cita' },
         },
-        required: ['name', 'startTime'],
+        required: ['name', 'email', 'startTime'],
       },
     },
   },
 ];
 
 async function executeToolCall(toolName, args, tenant = {}) {
+  const useCalendly = tenant.calendar_provider === 'calendly';
+  const calSvc = useCalendly ? calendlyService : calendarService;
+
   if (toolName === 'get_available_slots') {
-    const slots = await calendarService.getAvailableSlots(args.date, tenant);
+    const slots = await calSvc.getAvailableSlots(args.date, tenant);
     if (!slots.length) return { available: false, message: 'No hay horarios disponibles para esa fecha.' };
+    const tz = tenant.timezone || 'America/Panama';
     const formatted = slots.slice(0, 5).map(s => {
       const d = new Date(s);
-      return d.toLocaleString('es-MX', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleString('es', { timeZone: tz, weekday: 'long', hour: '2-digit', minute: '2-digit' });
     });
     return { available: true, slots: formatted, rawSlots: slots.slice(0, 5) };
   }
 
   if (toolName === 'book_appointment') {
-    const event = await calendarService.createEvent({
+    if (useCalendly) {
+      return await calSvc.createEvent({ name: args.name, email: args.email, startTime: args.startTime, purpose: args.purpose }, tenant);
+    }
+    const event = await calSvc.createEvent({
       title: args.purpose || 'Cita agendada por asistente IA',
       description: `Cliente: ${args.name}${args.email ? ` | Email: ${args.email}` : ''}`,
       startTime: args.startTime,
