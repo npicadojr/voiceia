@@ -4,7 +4,10 @@ const twilio = require('twilio');
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 const openaiService  = require('../services/openai');
+const groqService    = require('../services/groq');
 const elevenlabsService = require('../services/elevenlabs');
+
+const aiService = process.env.LLM_PROVIDER === 'groq' ? groqService : openaiService;
 const callModel      = require('../models/call');
 const leadModel      = require('../models/lead');
 const tenantModel    = require('../models/tenant');
@@ -119,19 +122,26 @@ router.post('/transcribe', async (req, res) => {
   }
 
   try {
-    // Single DB fetch — reuse callRecord throughout to avoid N+1 queries
+    // First fetch call record (needed to get tenant_id), then parallelize everything else
     const callRecord = await callModel.getCallBySid(callSid);
     const callId = callRecord?.id;
     const agentType = callRecord?.agent_type || 'leadQualifier';
     const agent = AGENTS[agentType] || AGENTS.leadQualifier;
 
-    const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
+    const [tenant, userText, historyBase] = await Promise.all([
+      callRecord?.tenant_id ? tenantModel.getTenantById(callRecord.tenant_id) : Promise.resolve(null),
+      aiService.transcribeAudio(recordingUrl),
+      conversationManager.getHistoryById(callId),
+    ]);
+
+    logger.info('User said', { callSid, text: userText });
+    // fire-and-forget — don't block the LLM call on a DB write
+    conversationManager.addMessageById(callId, 'user', userText).catch(err =>
+      logger.warn('Failed to store user message', { callSid, err: err.message })
+    );
+
     const voiceId = tenant?.elevenlabs_voice_id || undefined;
     const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
-
-    const userText = await openaiService.transcribeAudio(recordingUrl);
-    logger.info('User said', { callSid, text: userText });
-    await conversationManager.addMessageById(callId, 'user', userText);
 
     if (agent.shouldTransferToHuman(userText)) {
       await callModel.updateCall(callId, { status: 'transferred' });
@@ -144,7 +154,7 @@ router.post('/transcribe', async (req, res) => {
     }
 
     if (agent.isEndIntent(userText)) {
-      const history = await conversationManager.getHistoryById(callId);
+      const history = [...historyBase, { role: 'user', content: userText }];
       let extractedData = {};
       const extractFn = agent.extractLeadData || agent.extractBookingData || agent.extractSurveyResults || agent.extractSupportData;
       if (extractFn) extractedData = await extractFn(history);
@@ -161,7 +171,7 @@ router.post('/transcribe', async (req, res) => {
       return res.type('text/xml').send(twiml.toString());
     }
 
-    const history = await conversationManager.getHistoryById(callId);
+    const history = [...historyBase, { role: 'user', content: userText }];
 
     // Use tool calling for appointmentBooker, plain chat for others
     let aiResponse;
@@ -175,7 +185,7 @@ router.post('/transcribe', async (req, res) => {
           : '\nPide el email antes de confirmar: "¿A qué email le envío la invitación?". Repítelo deletreándolo y espera confirmación.';
       const appointmentPrompt = systemPrompt + calendarNote;
       const tools = provider === 'calendly_free' ? agent.TOOLS_FREE_CALENDLY : agent.TOOLS;
-      const result = await openaiService.chatWithTools(history, appointmentPrompt, tools);
+      const result = await aiService.chatWithTools(history, appointmentPrompt, tools);
 
       if (result.toolCalls) {
         const updatedMessages = [...history, result.assistantMessage];
@@ -204,7 +214,7 @@ router.post('/transcribe', async (req, res) => {
           }
           updatedMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) });
         }
-        const final = await openaiService.chat(
+        const final = await aiService.chat(
           updatedMessages.filter(m => m.role !== 'system'),
           appointmentPrompt
         );
@@ -213,7 +223,7 @@ router.post('/transcribe', async (req, res) => {
         aiResponse = result.content;
       }
     } else {
-      const result = await openaiService.chat(history, systemPrompt);
+      const result = await aiService.chat(history, systemPrompt);
       aiResponse = result.content;
     }
 

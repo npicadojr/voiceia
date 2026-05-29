@@ -1,5 +1,6 @@
 const supabase = require('../supabase');
 const { generateApiKey } = require('../utils/apiKey');
+const tenantCache = require('../utils/tenantCache');
 
 async function createTenant({ name, slug, phoneNumber, voiceId, humanAgentNumber, defaultAgent, googleRefreshToken, googleCalendarId, systemPrompt, greetingText, calendarProvider, calendlyApiToken, calendlyEventTypeUri, calendlyLink, emailFrom, timezone }) {
   const apiKey = generateApiKey();
@@ -40,22 +41,30 @@ async function listTenants() {
 }
 
 async function getTenantById(id) {
+  const cached = tenantCache.get(`id:${id}`);
+  if (cached) return cached;
+
   const { data, error } = await supabase
     .from('tenants')
     .select('*, agent_configs(*)')
     .eq('id', id)
     .single();
   if (error) return null;
+  if (data) tenantCache.set(`id:${id}`, data);
   return data;
 }
 
 async function getTenantBySlug(slug) {
+  const cached = tenantCache.get(`slug:${slug}`);
+  if (cached) return cached;
+
   const { data } = await supabase
     .from('tenants')
     .select('*')
     .eq('slug', slug)
     .eq('active', true)
     .single();
+  if (data) tenantCache.set(`slug:${slug}`, data);
   return data || null;
 }
 
@@ -76,6 +85,8 @@ async function updateTenant(id, fields) {
     .select()
     .single();
   if (error) throw error;
+  tenantCache.invalidate(`id:${id}`);
+  if (data?.slug) tenantCache.invalidate(`slug:${data.slug}`);
   return data;
 }
 
