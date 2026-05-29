@@ -95,9 +95,8 @@ async function executeToolCall(toolName, args, tenant = {}) {
 const END_PATTERNS = [
   /hasta\s*(luego|pronto)/i,
   /adiós|adios|chao|bye/i,
-  /cita\s*confirmada/i,
   /ya\s*quedamos/i,
-  /perfecto.*gracias/i,
+  /muchas\s*gracias.*hasta/i,
 ];
 
 const TRANSFER_PATTERNS = [

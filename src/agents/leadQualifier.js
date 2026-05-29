@@ -25,10 +25,11 @@ Pautas importantes:
 const END_PATTERNS = [
   /hasta\s*(luego|pronto|mañana)/i,
   /adiós|adios|chao|bye/i,
-  /no\s*(me\s*interesa|gracias|necesito)/i,
+  /no\s*me\s*interesa/i,
   /no\s*tengo\s*(tiempo|interés|interes)/i,
   /llame\s*(más\s*tarde|después|otro\s*día)/i,
   /no\s*quiero\s*continuar/i,
+  /por\s*favor\s*(no\s*me\s*llame|no\s*me\s*contacte)/i,
 ];
 
 const TRANSFER_PATTERNS = [

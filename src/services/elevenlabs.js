@@ -10,9 +10,13 @@ function resolveVoice(voiceId) {
   return process.env.OPENAI_TTS_VOICE || 'nova';
 }
 
+let _openai;
 function getClient() {
-  const OpenAI = require('openai');
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  if (!_openai) {
+    const OpenAI = require('openai');
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
 }
 
 async function textToSpeech(text, voiceId) {

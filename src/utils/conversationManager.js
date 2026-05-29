@@ -16,10 +16,18 @@ async function addMessage(callSid, role, content) {
   await callModel.appendMessage(call.id, role, content);
 }
 
+async function addMessageById(callId, role, content) {
+  await callModel.appendMessage(callId, role, content);
+}
+
 async function getHistory(callSid) {
   const call = await callModel.getCallBySid(callSid);
   if (!call) return [];
   return callModel.getMessages(call.id);
+}
+
+async function getHistoryById(callId) {
+  return callModel.getMessages(callId);
 }
 
 async function getAgentType(callSid) {
@@ -46,7 +54,9 @@ async function endConversation(callSid, extractedData = null) {
 module.exports = {
   initConversation,
   addMessage,
+  addMessageById,
   getHistory,
+  getHistoryById,
   getAgentType,
   getConversation,
   endConversation,

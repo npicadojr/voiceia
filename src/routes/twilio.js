@@ -12,6 +12,25 @@ const conversationManager = require('../utils/conversationManager');
 const emailService   = require('../services/email');
 const logger         = require('../utils/logger');
 
+// Validate that webhook requests actually come from Twilio
+function validateTwilioSignature(req, res, next) {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VALIDATE_TWILIO_SIG) {
+    return next();
+  }
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const signature = req.headers['x-twilio-signature'];
+  const baseUrl = process.env.BASE_URL || `https://${req.headers.host}`;
+  const url = `${baseUrl}${req.originalUrl}`;
+
+  if (!twilio.validateRequest(authToken, signature, url, req.body)) {
+    logger.warn('Invalid Twilio signature', { url });
+    return res.status(403).send('Forbidden');
+  }
+  next();
+}
+
+router.use(validateTwilioSignature);
+
 const AGENTS = {
   leadQualifier:     require('../agents/leadQualifier'),
   appointmentBooker: require('../agents/appointmentBooker'),
@@ -100,21 +119,22 @@ router.post('/transcribe', async (req, res) => {
   }
 
   try {
-    const agentType = await conversationManager.getAgentType(callSid);
+    // Single DB fetch — reuse callRecord throughout to avoid N+1 queries
+    const callRecord = await callModel.getCallBySid(callSid);
+    const callId = callRecord?.id;
+    const agentType = callRecord?.agent_type || 'leadQualifier';
     const agent = AGENTS[agentType] || AGENTS.leadQualifier;
 
-    // Resolve tenant for voice/prompt overrides
-    const callRecord = await callModel.getCallBySid(callSid);
     const tenant = callRecord?.tenant_id ? await tenantModel.getTenantById(callRecord.tenant_id) : null;
+    const voiceId = tenant?.elevenlabs_voice_id || undefined;
     const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
 
     const userText = await openaiService.transcribeAudio(recordingUrl);
     logger.info('User said', { callSid, text: userText });
-    await conversationManager.addMessage(callSid, 'user', userText);
+    await conversationManager.addMessageById(callId, 'user', userText);
 
     if (agent.shouldTransferToHuman(userText)) {
-      const ctx = await conversationManager.getConversation(callSid);
-      await callModel.updateCall(ctx.callId, { status: 'transferred' });
+      await callModel.updateCall(callId, { status: 'transferred' });
       await conversationManager.endConversation(callSid);
 
       twiml.say({ language: 'es-MX' }, 'Por supuesto, le transfiero con un agente humano. Un momento por favor.');
@@ -124,14 +144,13 @@ router.post('/transcribe', async (req, res) => {
     }
 
     if (agent.isEndIntent(userText)) {
-      const history = await conversationManager.getHistory(callSid);
+      const history = await conversationManager.getHistoryById(callId);
       let extractedData = {};
       const extractFn = agent.extractLeadData || agent.extractBookingData || agent.extractSurveyResults || agent.extractSupportData;
       if (extractFn) extractedData = await extractFn(history);
 
       if (agentType === 'leadQualifier' && extractedData.phone) {
-        const ctx = await conversationManager.getConversation(callSid);
-        await leadModel.upsertLead({ ...extractedData, sourceCallId: ctx.callId, tenantId: callRecord?.tenant_id });
+        await leadModel.upsertLead({ ...extractedData, sourceCallId: callId, tenantId: callRecord?.tenant_id });
       }
 
       await conversationManager.endConversation(callSid, extractedData);
@@ -142,7 +161,7 @@ router.post('/transcribe', async (req, res) => {
       return res.type('text/xml').send(twiml.toString());
     }
 
-    const history = await conversationManager.getHistory(callSid);
+    const history = await conversationManager.getHistoryById(callId);
 
     // Use tool calling for appointmentBooker, plain chat for others
     let aiResponse;
@@ -159,7 +178,6 @@ router.post('/transcribe', async (req, res) => {
       const result = await openaiService.chatWithTools(history, appointmentPrompt, tools);
 
       if (result.toolCalls) {
-        // Execute each tool call and build updated messages for re-call
         const updatedMessages = [...history, result.assistantMessage];
         for (const tc of result.toolCalls) {
           logger.info('Tool call', { callSid, tool: tc.name, args: tc.args });
@@ -170,7 +188,6 @@ router.post('/transcribe', async (req, res) => {
             logger.error('Tool call failed', { callSid, tool: tc.name, err: err.message });
             toolResult = { error: 'No pude consultar el calendario en este momento. Por favor intenta de nuevo.' };
           }
-          // Send email with Calendly link
           if (toolResult.schedulingLink && toolResult.email) {
             try {
               await emailService.sendBookingLink({
@@ -187,7 +204,6 @@ router.post('/transcribe', async (req, res) => {
           }
           updatedMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) });
         }
-        // Re-call GPT-4o without tools to get the natural language response
         const final = await openaiService.chat(
           updatedMessages.filter(m => m.role !== 'system'),
           appointmentPrompt
@@ -201,14 +217,25 @@ router.post('/transcribe', async (req, res) => {
       aiResponse = result.content;
     }
 
-    logger.info('AI response', { callSid, text: aiResponse, host: req.headers.host });
+    logger.info('AI response', { callSid, text: aiResponse });
 
-    twiml.say({ language: 'es-MX' }, aiResponse);
+    // Use OpenAI TTS for AI responses (same voice as greeting)
+    let audioUrl;
+    try {
+      const tts = await elevenlabsService.textToSpeech(aiResponse, voiceId);
+      audioUrl = tts.url;
+    } catch (err) {
+      logger.warn('TTS failed for AI response, using Twilio Say', { callSid, err: err.message });
+    }
+
+    if (audioUrl) twiml.play(audioUrl);
+    else twiml.say({ language: 'es-MX' }, aiResponse);
+
     twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: false, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');
     twiml.hangup();
 
-    await conversationManager.addMessage(callSid, 'assistant', aiResponse).catch(err =>
+    await conversationManager.addMessageById(callId, 'assistant', aiResponse).catch(err =>
       logger.warn('Failed to store AI response', { callSid, err: err.message })
     );
 
@@ -218,6 +245,20 @@ router.post('/transcribe', async (req, res) => {
     twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: false, trim: 'trim-silence' });
   }
 
+  res.type('text/xml').send(twiml.toString());
+});
+
+// POST /twilio/transfer-complete
+router.post('/transfer-complete', async (req, res) => {
+  const twiml = new VoiceResponse();
+  const { CallSid, DialCallStatus } = req.body;
+  logger.info('Transfer complete', { CallSid, DialCallStatus });
+
+  if (DialCallStatus === 'no-answer' || DialCallStatus === 'busy' || DialCallStatus === 'failed') {
+    twiml.say({ language: 'es-MX' }, 'Lo sentimos, el agente no está disponible en este momento. Le llamaremos de vuelta. Hasta luego.');
+  }
+
+  twiml.hangup();
   res.type('text/xml').send(twiml.toString());
 });
 
