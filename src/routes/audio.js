@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { Readable } = require('stream');
 const OpenAI = require('openai');
 const logger = require('../utils/logger');
 
@@ -50,8 +49,10 @@ router.get('/:token', async (req, res) => {
       response_format: 'mp3',
     });
 
+    const buffer = Buffer.from(await response.arrayBuffer());
     res.set('Content-Type', 'audio/mpeg');
-    Readable.fromWeb(response.body).pipe(res);
+    res.set('Content-Length', buffer.length);
+    res.send(buffer);
   } catch (err) {
     logger.error('OpenAI TTS streaming failed', { err: err.message });
     res.sendStatus(500);
