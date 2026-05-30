@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const twilio = require('twilio');
-const VoiceResponse = twilio.twiml.VoiceResponse;
 
 const twilioService = require('../services/twilio');
 const callModel = require('../models/call');
 const logger = require('../utils/logger');
+const { adminAuth } = require('../middleware/auth');
 
 // POST /calls/outbound — Initiate an outbound call
-router.post('/outbound', async (req, res) => {
+router.post('/outbound', adminAuth, async (req, res) => {
   const { to, agent = 'leadQualifier', metadata = {} } = req.body;
 
   if (!to) {
@@ -87,11 +86,6 @@ router.post('/:id/transfer', async (req, res) => {
     if (call.status !== 'in-progress') {
       return res.status(409).json({ error: 'Call is not in progress' });
     }
-
-    const twiml = new VoiceResponse();
-    twiml.say({ language: 'es-MX' }, 'Transfiriendo su llamada con un agente humano. Un momento por favor.');
-    const dial = twiml.dial();
-    dial.number(transferTo || process.env.HUMAN_AGENT_NUMBER);
 
     await twilioService.redirectCall(call.call_sid, `${process.env.BASE_URL}/twilio/transfer?twiml=1`);
     await callModel.updateCall(call.id, { status: 'transferred' });

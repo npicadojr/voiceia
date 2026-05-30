@@ -107,18 +107,8 @@ async function upsertAgentConfig(tenantId, agentType, { systemPrompt, greetingTe
   return data;
 }
 
-async function getAgentConfig(tenantId, agentType) {
-  const { data } = await supabase
-    .from('agent_configs')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('agent_type', agentType)
-    .single();
-  return data || null;
-}
-
 module.exports = {
   createTenant, listTenants, getTenantById, getTenantBySlug,
   getTenantByApiKey, updateTenant, deactivateTenant,
-  upsertAgentConfig, getAgentConfig,
+  upsertAgentConfig,
 };

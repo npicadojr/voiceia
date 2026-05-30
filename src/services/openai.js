@@ -1,5 +1,6 @@
 const OpenAI = require('openai');
 const axios = require('axios');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -123,4 +124,19 @@ async function chatWithTools(messages, systemPrompt, tools) {
   return { content: choice.message.content };
 }
 
-module.exports = { transcribeAudio, chat, chatWithTools, extractStructuredData };
+/**
+ * Generate a signed URL for streaming OpenAI TTS via GET /audio/:token.
+ * The token encodes { text, voice, ts } and expires in 60 seconds.
+ */
+function generateAudioUrl(text, voice = 'nova') {
+  const payload = Buffer.from(JSON.stringify({ text, voice, ts: Date.now() })).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', process.env.AUDIO_SECRET)
+    .update(payload)
+    .digest('hex')
+    .slice(0, 16);
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  return `${baseUrl}/audio/${payload}.${sig}`;
+}
+
+module.exports = { transcribeAudio, chat, chatWithTools, extractStructuredData, generateAudioUrl };

@@ -3,36 +3,19 @@ const router = express.Router();
 const twilio = require('twilio');
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-const openaiService  = require('../services/openai');
-const groqService    = require('../services/groq');
-const elevenlabsService = require('../services/elevenlabs');
-
-const aiService = process.env.LLM_PROVIDER === 'groq' ? groqService : openaiService;
+const aiService      = require('../services/openai');
+const { generateAudioUrl } = aiService;
 const callModel      = require('../models/call');
 const leadModel      = require('../models/lead');
 const tenantModel    = require('../models/tenant');
 const conversationManager = require('../utils/conversationManager');
 const emailService   = require('../services/email');
 const logger         = require('../utils/logger');
+const { twilioAuth } = require('../middleware/twilioAuth');
+const { generateAndCacheGreeting, getGreetingUrl } = require('../services/greetingCache');
 
-// Validate that webhook requests actually come from Twilio
-function validateTwilioSignature(req, res, next) {
-  if (process.env.NODE_ENV !== 'production' && !process.env.VALIDATE_TWILIO_SIG) {
-    return next();
-  }
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const signature = req.headers['x-twilio-signature'];
-  const baseUrl = process.env.BASE_URL || `https://${req.headers.host}`;
-  const url = `${baseUrl}${req.originalUrl}`;
+router.use(twilioAuth);
 
-  if (!twilio.validateRequest(authToken, signature, url, req.body)) {
-    logger.warn('Invalid Twilio signature', { url });
-    return res.status(403).send('Forbidden');
-  }
-  next();
-}
-
-router.use(validateTwilioSignature);
 
 const AGENTS = {
   leadQualifier:     require('../agents/leadQualifier'),
@@ -66,7 +49,7 @@ router.post('/voice', async (req, res) => {
     const agentType  = req.query.agent || tenant?.default_agent || 'leadQualifier';
 
     const greetingText = tenant?.greeting_text || DEFAULT_GREETINGS[agentType] || DEFAULT_GREETINGS.appointmentBooker;
-    const voiceId      = tenant?.elevenlabs_voice_id || undefined;
+    const openaiVoice  = tenant?.openai_voice || 'nova';
 
     const callRecord = await callModel.createCall({
       callSid, direction, agentType, fromNumber, toNumber,
@@ -76,16 +59,16 @@ router.post('/voice', async (req, res) => {
     await conversationManager.initConversation(callSid, callRecord.id, agentType, { fromNumber, toNumber });
     await conversationManager.addMessage(callSid, 'assistant', greetingText);
 
-    let audioUrl;
-    try {
-      const tts = await elevenlabsService.textToSpeech(greetingText, voiceId);
-      audioUrl = tts.url;
-    } catch (err) {
-      logger.warn('OpenAI TTS failed, falling back to Twilio Say', { err: err.message });
+    let greetingUrl = tenant ? await getGreetingUrl(tenant.id) : null;
+    if (!greetingUrl && tenant) {
+      try {
+        greetingUrl = await generateAndCacheGreeting(tenant.id, greetingText, openaiVoice);
+      } catch (err) {
+        logger.warn('Failed to cache greeting, using signed URL', { tenantId: tenant.id, err: err.message });
+      }
     }
-
-    if (audioUrl) twiml.play(audioUrl);
-    else twiml.say({ language: 'es-MX' }, greetingText);
+    if (!greetingUrl) greetingUrl = generateAudioUrl(greetingText, openaiVoice);
+    twiml.play(greetingUrl);
 
     twiml.record({
       action: `https://${req.headers.host}/twilio/transcribe`,
@@ -140,7 +123,7 @@ router.post('/transcribe', async (req, res) => {
       logger.warn('Failed to store user message', { callSid, err: err.message })
     );
 
-    const voiceId = tenant?.elevenlabs_voice_id || undefined;
+    const openaiVoice = tenant?.openai_voice || 'nova';
     const systemPrompt = tenant?.system_prompt || agent.SYSTEM_PROMPT;
 
     if (agent.shouldTransferToHuman(userText)) {
@@ -229,17 +212,7 @@ router.post('/transcribe', async (req, res) => {
 
     logger.info('AI response', { callSid, text: aiResponse });
 
-    // Use OpenAI TTS for AI responses (same voice as greeting)
-    let audioUrl;
-    try {
-      const tts = await elevenlabsService.textToSpeech(aiResponse, voiceId);
-      audioUrl = tts.url;
-    } catch (err) {
-      logger.warn('TTS failed for AI response, using Twilio Say', { callSid, err: err.message });
-    }
-
-    if (audioUrl) twiml.play(audioUrl);
-    else twiml.say({ language: 'es-MX' }, aiResponse);
+    twiml.play(generateAudioUrl(aiResponse, openaiVoice));
 
     twiml.record({ action: `https://${req.headers.host}/twilio/transcribe`, method: 'POST', maxLength: 30, timeout: 2, playBeep: false, trim: 'trim-silence' });
     twiml.say({ language: 'es-MX' }, '¿Sigue ahí? Si necesita algo más, no dude en llamar. Hasta luego.');

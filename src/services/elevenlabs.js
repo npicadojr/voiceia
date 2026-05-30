@@ -3,33 +3,36 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
-const OPENAI_VOICES = new Set(['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer']);
-
-function resolveVoice(voiceId) {
-  if (voiceId && OPENAI_VOICES.has(voiceId)) return voiceId;
-  return process.env.OPENAI_TTS_VOICE || 'nova';
-}
-
-let _openai;
-function getClient() {
-  if (!_openai) {
-    const OpenAI = require('openai');
-    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return _openai;
-}
+const ELEVENLABS_API  = 'https://api.elevenlabs.io/v1/text-to-speech';
+const DEFAULT_VOICE   = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Sarah (multilingual)
+const DEFAULT_MODEL   = process.env.ELEVENLABS_MODEL    || 'eleven_multilingual_v2';
 
 async function textToSpeech(text, voiceId) {
-  const fileId = uuidv4();
-  const voice = resolveVoice(voiceId);
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not set');
 
-  const openai = getClient();
-  const mp3 = await openai.audio.speech.create({
-    model: 'tts-1',
-    voice,
-    input: text,
+  const voice  = voiceId || DEFAULT_VOICE;
+  const fileId = uuidv4();
+
+  const response = await fetch(`${ELEVENLABS_API}/${voice}`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text,
+      model_id: DEFAULT_MODEL,
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    }),
   });
-  const buffer = Buffer.from(await mp3.arrayBuffer());
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`ElevenLabs ${response.status}: ${body}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
 
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     const { put } = require('@vercel/blob');
@@ -37,7 +40,7 @@ async function textToSpeech(text, voiceId) {
       access: 'public',
       contentType: 'audio/mpeg',
     });
-    logger.info('OpenAI TTS → Vercel Blob', { fileId, voice });
+    logger.info('ElevenLabs TTS → Vercel Blob', { fileId, voice });
     return { fileId, url };
   }
 
@@ -47,15 +50,8 @@ async function textToSpeech(text, voiceId) {
   fs.writeFileSync(filePath, buffer);
 
   const url = `${process.env.BASE_URL}/audio/${fileId}.mp3`;
-  logger.info('OpenAI TTS → /tmp/audio', { fileId, voice });
+  logger.info('ElevenLabs TTS → /tmp/audio', { fileId, voice });
   return { fileId, filePath, url };
 }
 
-function deleteAudioFile(fileId) {
-  const filePath = path.join('/tmp/audio', `${fileId}.mp3`);
-  fs.unlink(filePath, (err) => {
-    if (err && err.code !== 'ENOENT') logger.warn('Failed to delete audio', { fileId });
-  });
-}
-
-module.exports = { textToSpeech, deleteAudioFile };
+module.exports = { textToSpeech };

@@ -48,8 +48,6 @@ const SUPPORT_SCHEMA = {
   },
 };
 
-const ESCALATION_THRESHOLD = 3;
-
 function isEndIntent(text) {
   return END_PATTERNS.some(p => p.test(text));
 }
@@ -66,10 +64,4 @@ async function extractSupportData(messages) {
   }
 }
 
-module.exports = {
-  SYSTEM_PROMPT,
-  isEndIntent,
-  shouldTransferToHuman,
-  extractSupportData,
-  ESCALATION_THRESHOLD,
-};
+module.exports = { SYSTEM_PROMPT, isEndIntent, shouldTransferToHuman, extractSupportData };

@@ -32,4 +32,4 @@ async function redirectCall(callSid, twimlUrl) {
   return client.calls(callSid).update({ url: twimlUrl, method: 'POST' });
 }
 
-module.exports = { client, initiateCall, redirectCall };
+module.exports = { initiateCall, redirectCall };

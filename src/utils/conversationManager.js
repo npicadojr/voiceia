@@ -20,26 +20,8 @@ async function addMessageById(callId, role, content) {
   await callModel.appendMessage(callId, role, content);
 }
 
-async function getHistory(callSid) {
-  const call = await callModel.getCallBySid(callSid);
-  if (!call) return [];
-  return callModel.getMessages(call.id);
-}
-
 async function getHistoryById(callId) {
   return callModel.getMessages(callId);
-}
-
-async function getAgentType(callSid) {
-  const call = await callModel.getCallBySid(callSid);
-  return call?.agent_type || 'leadQualifier';
-}
-
-async function getConversation(callSid) {
-  const call = await callModel.getCallBySid(callSid);
-  if (!call) return null;
-  // Expose callId at top level for backwards-compat with route code
-  return { ...call, callId: call.id };
 }
 
 async function endConversation(callSid, extractedData = null) {
@@ -55,9 +37,6 @@ module.exports = {
   initConversation,
   addMessage,
   addMessageById,
-  getHistory,
   getHistoryById,
-  getAgentType,
-  getConversation,
   endConversation,
 };

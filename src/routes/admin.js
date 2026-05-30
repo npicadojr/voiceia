@@ -5,6 +5,7 @@ const tenantModel = require('../models/tenant');
 const callModel = require('../models/call');
 const twilioService = require('../services/twilio');
 const logger = require('../utils/logger');
+const { generateAndCacheGreeting } = require('../services/greetingCache');
 
 router.use(adminAuth);
 
@@ -46,13 +47,42 @@ router.get('/tenants/:id', async (req, res) => {
 
 // PUT /admin/tenants/:id
 router.put('/tenants/:id', async (req, res) => {
-  const allowed = ['name', 'phone_number', 'elevenlabs_voice_id', 'human_agent_number', 'active', 'default_agent', 'system_prompt', 'greeting_text', 'google_refresh_token', 'google_calendar_id', 'calendar_provider', 'calendly_api_token', 'calendly_event_type_uri', 'calendly_link', 'email_from', 'timezone'];
+  const allowed = ['name', 'phone_number', 'elevenlabs_voice_id', 'openai_voice', 'human_agent_number', 'active', 'default_agent', 'system_prompt', 'greeting_text', 'google_refresh_token', 'google_calendar_id', 'calendar_provider', 'calendly_api_token', 'calendly_event_type_uri', 'calendly_link', 'email_from', 'timezone'];
   const fields = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
 
   try {
     const tenant = await tenantModel.updateTenant(req.params.id, fields);
+
+    const greetingChanged = 'greeting_text' in fields || 'openai_voice' in fields || 'elevenlabs_voice_id' in fields;
+    if (greetingChanged && process.env.BLOB_READ_WRITE_TOKEN) {
+      const greetingText = tenant.greeting_text;
+      const voice = tenant.openai_voice || 'nova';
+      generateAndCacheGreeting(req.params.id, greetingText, voice)
+        .then(url => logger.info('Greeting cache refreshed', { tenantId: req.params.id, url }))
+        .catch(err => logger.warn('Failed to refresh greeting cache', { tenantId: req.params.id, err: err.message }));
+    }
+
     res.json(tenant);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/tenants/:id/regenerate-greeting
+router.post('/tenants/:id/regenerate-greeting', async (req, res) => {
+  try {
+    const tenant = await tenantModel.getTenantById(req.params.id);
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const greetingText = tenant.greeting_text;
+    if (!greetingText) return res.status(400).json({ error: 'Tenant has no greeting_text configured' });
+
+    const voice = tenant.openai_voice || 'nova';
+    const url = await generateAndCacheGreeting(req.params.id, greetingText, voice);
+    logger.info('Greeting manually regenerated', { tenantId: req.params.id, url });
+    res.json({ url });
+  } catch (err) {
+    logger.error('Failed to regenerate greeting', { tenantId: req.params.id, err: err.message });
     res.status(500).json({ error: err.message });
   }
 });
